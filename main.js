@@ -1,4 +1,4 @@
-// Agent Huddle — processus principal Electron
+// Cockpit — processus principal Electron
 // Fenetre flottante toujours au-dessus + ponts IPC vers les sessions Claude et Git.
 const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
@@ -7,8 +7,11 @@ const git = require('./lib/git');
 
 let win = null;
 
+app.setName('Cockpit');
+
 function createWindow() {
   win = new BrowserWindow({
+    title: 'Cockpit',
     width: 480,
     height: 320,
     minWidth: 360,

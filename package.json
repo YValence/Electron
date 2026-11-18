@@ -1,7 +1,7 @@
 {
-  "name": "agent-huddle",
+  "name": "cockpit",
   "version": "0.1.0",
-  "description": "Popup flottant pour suivre les agents Claude en temps reel + graphe Git",
+  "description": "Cockpit : popup flottant pour suivre les agents Claude en temps reel + graphe Git",
   "main": "main.js",
   "author": "YValence",
   "license": "MIT",
