@@ -8,11 +8,17 @@
 </head>
 <body>
   <div class="window">
+    <!-- languette : seul element visible quand le tiroir est ferme (survol pour ouvrir) -->
+    <div class="handle" id="handle" aria-hidden="true"></div>
+
     <!-- barre de titre draggable -->
     <div class="titlebar">
       <span class="brand">Cockpit</span>
       <span class="count" id="count">—</span>
       <span class="spacer"></span>
+      <button class="ic" id="drawerBtn" title="Mode tiroir (se cache sur le bord droit)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="14" y1="5" x2="14" y2="19"/></svg>
+      </button>
       <button class="ic" id="pinBtn" title="Epingler par-dessus">&#9635;</button>
       <button class="ic" id="minBtn" title="Reduire">&#8211;</button>
       <button class="ic" id="closeBtn" title="Fermer">&#10005;</button>
@@ -36,7 +42,16 @@
     <!-- ===== GIT ===== -->
     <div class="body" id="tab-git" hidden>
       <div class="git-top">
-        <div class="repo" id="repoName">Aucun depot</div>
+        <div class="repo-switch" id="repoSwitch">
+          <button class="branch-btn repo-btn" id="repoBtn" aria-haspopup="true" aria-expanded="false">
+            <span class="cur-dot" id="repoDot"></span><span id="curRepo">Aucun depot</span><span class="car">&#9662;</span>
+          </button>
+          <div class="branch-menu" id="repoMenu" hidden role="menu">
+            <div class="mhead">Depots detectes</div>
+            <div id="repoItems"></div>
+            <button class="madd" id="addRepoBtn">+ Ajouter un depot…</button>
+          </div>
+        </div>
         <div class="git-actions">
           <div class="branch-switch" id="branchSwitch" hidden>
             <button class="branch-btn" id="branchBtn" aria-haspopup="true" aria-expanded="false">
@@ -47,7 +62,6 @@
               <div id="branchItems"></div>
             </div>
           </div>
-          <button class="btn" id="pickRepoBtn">Choisir un depot…</button>
         </div>
       </div>
 
