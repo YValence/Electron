@@ -16,7 +16,7 @@
   --done:  #3ecf8e;   /* termine */
   --merge: #a78bfa;   /* branche / merge */
   --radius: 16px;
-  --strip: 8px;              /* largeur de la languette du tiroir (doit matcher STRIP en JS) */
+  --strip: 16px;             /* largeur visible de la languette du tiroir (doit matcher STRIP en JS) */
   --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
   --disp: var(--sans);   /* titres = meme famille que le texte, juste plus gras (uniformite) */
@@ -56,14 +56,22 @@ body.drawer .window {
 /* Ouvert : la carte revient entierement a l'ecran. */
 body.drawer.drawer-open .window { transform: translateX(0); }
 
-/* La languette : fine barre coloree, seul repere visible quand c'est ferme. */
+/* La languette : bande fine au bord, avec un "onglet" colore centre, facile a viser. */
 .handle { display: none; }
 body.drawer .handle {
-  display: block; position: absolute; top: 0; left: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  position: absolute; top: 0; left: 0; z-index: 5;
   width: var(--strip); height: 100%;
-  background: linear-gradient(180deg, var(--run), var(--merge));
   border-top-left-radius: var(--radius); border-bottom-left-radius: var(--radius);
   box-shadow: -2px 0 12px -4px rgba(0,0,0,.6);
+  cursor: pointer;
+}
+/* l'onglet a attraper : pastille verticale coloree, bien visible */
+body.drawer .handle::before {
+  content: ""; width: 5px; height: 110px; border-radius: 999px;
+  background: linear-gradient(180deg, var(--run), var(--merge));
+  box-shadow: 0 0 10px -1px var(--run);
+  transition: height .2s, width .2s;
 }
 body.drawer.drawer-open .handle { opacity: 0; }   /* on la masque une fois ouvert */
 
@@ -309,6 +317,15 @@ body.drawer.drawer-open .handle { opacity: 0; }   /* on la masque une fois ouver
 /* menu des branches : scrollbar fine classique */
 .branch-menu::-webkit-scrollbar { width: 8px; }
 .branch-menu::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; }
+
+/* ---------- Infobulle de survol (revele le texte coupe) ---------- */
+.tip { position: fixed; z-index: 100; max-width: 320px; pointer-events: none;
+  font-size: 12px; line-height: 1.4; color: var(--fg);
+  background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 7px 10px; box-shadow: 0 14px 34px -14px rgba(0,0,0,.85);
+  word-break: break-word; white-space: pre-wrap; animation: tipIn .12s ease both; }
+.tip[hidden] { display: none; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 
 /* accessibilite : on coupe les animations si l'utilisateur le demande */
 @media (prefers-reduced-motion: reduce) {

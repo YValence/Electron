@@ -9,8 +9,9 @@ contextBridge.exposeInMainWorld('api', {
   autosize:  (h) => ipcRenderer.invoke('win:autosize', h),
 
   // mode tiroir
-  setDrawerMode:  (on)     => ipcRenderer.invoke('drawer:set-mode', on),
-  setClickThrough:(ignore) => ipcRenderer.invoke('drawer:click-through', ignore),
+  setDrawerMode: (on) => ipcRenderer.invoke('drawer:set-mode', on),
+  // le main previent quand il faut ouvrir (true) ou fermer (false) le tiroir
+  onDrawerState: (cb) => ipcRenderer.on('drawer:state', (_e, open) => cb(open)),
 
   // sessions Claude
   listSessions: () => ipcRenderer.invoke('sessions:list'),

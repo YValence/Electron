@@ -37,14 +37,10 @@ $('pinBtn').addEventListener('click', async () => {
 $('pinBtn').classList.add('active'); // epingle par defaut
 
 /* ============ Mode tiroir ============ */
-// La fenetre se cache sur le bord droit ; seule une fine languette depasse.
-// On passe la souris dessus -> elle glisse vers l'interieur et reste ouverte
-// tant que la souris est dessus. On referme des qu'elle sort.
-const STRIP = 8;         // largeur visible de la languette (doit matcher --strip en CSS)
-const OPEN_DELAY = 150;  // ms de survol avant ouverture (evite les ouvertures par accident)
+// La fenetre se replie sur le bord droit ; seule la languette depasse.
+// C'est le processus principal qui decide d'ouvrir/fermer (il suit la vraie
+// position du curseur) : ici on se contente d'animer en CSS selon son signal.
 let drawerMode = false;
-let drawerOpen = false;
-let hoverTimer = null;
 
 // On se souvient du choix (tiroir ou fenetre classique) d'une fois sur l'autre.
 function loadDrawerPref() { try { return localStorage.getItem('cockpit.drawer') === '1'; } catch { return false; } }
@@ -55,42 +51,14 @@ async function setDrawerMode(on) {
   saveDrawerPref(on);
   document.body.classList.toggle('drawer', on);
   $('drawerBtn').classList.toggle('active', on);
+  if (!on) document.body.classList.remove('drawer-open');   // retour fenetre normale
   await window.api.setDrawerMode(on);
-  if (on) closeDrawer();          // demarre ferme (replie sur le bord)
-  else { drawerOpen = false; document.body.classList.remove('drawer-open'); }
   fitWindow();
 }
 
-function openDrawer() {
-  if (!drawerMode || drawerOpen) return;
-  drawerOpen = true;
-  document.body.classList.add('drawer-open');   // -> glisse vers l'interieur (CSS)
-  window.api.setClickThrough(false);            // la fenetre redevient cliquable
-}
-
-function closeDrawer() {
-  if (!drawerMode) return;
-  drawerOpen = false;
-  document.body.classList.remove('drawer-open'); // -> glisse dehors (CSS)
-  window.api.setClickThrough(true);              // on clique de nouveau "a travers"
-}
-
-// Survol de la languette. Meme en "clic a travers", le main nous transmet les
-// mouvements de souris (forward:true) : on sait donc quand on effleure le bord droit.
-window.addEventListener('mousemove', (e) => {
-  if (!drawerMode || drawerOpen) return;
-  const overHandle = e.clientX >= window.innerWidth - (STRIP + 6);
-  if (overHandle) {
-    if (!hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; openDrawer(); }, OPEN_DELAY);
-  } else if (hoverTimer) {
-    clearTimeout(hoverTimer); hoverTimer = null;
-  }
-});
-
-// La souris quitte la carte -> on referme le tiroir.
-$('count').closest('.window').addEventListener('mouseleave', () => {
-  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-  if (drawerOpen) closeDrawer();
+// Le main nous dit quand ouvrir (true) ou fermer (false) : on glisse en CSS.
+window.api.onDrawerState((open) => {
+  document.body.classList.toggle('drawer-open', !!open);
 });
 
 $('drawerBtn').addEventListener('click', () => setDrawerMode(!drawerMode));
@@ -357,7 +325,7 @@ function renderRepoMenu() {
   $('curRepo').textContent = cur ? cur.name : (repos.length ? 'Choisir…' : 'Aucun depot');
   $('repoItems').innerHTML = repos.length
     ? repos.map(r => `
-      <div class="bitem" data-repo="${esc(r.repo)}" ${r.repo === currentRepo ? 'aria-current="true"' : ''}>
+      <div class="bitem" data-repo="${esc(r.repo)}" data-tip="${esc(r.repo)}" ${r.repo === currentRepo ? 'aria-current="true"' : ''}>
         <span class="ln"></span><span class="nm">${esc(r.name)}</span>
         <span class="rbranch">${esc(r.current || '')}</span><span class="ck">&#10003;</span>
       </div>`).join('')
@@ -552,3 +520,53 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/* ============ Infobulle de survol ============ */
+/* Revele l'info cachee (texte coupe par "...") dans une bulle sous la souris. */
+const tip = document.createElement('div');
+tip.className = 'tip';
+tip.hidden = true;
+document.body.appendChild(tip);
+
+// Texte a reveler pour un element : data-tip explicite, sinon le texte si il est tronque.
+function tipTextOf(el) {
+  if (!el || el.nodeType !== 1) return null;
+  if (el.dataset && el.dataset.tip) return el.dataset.tip;
+  if (el.offsetParent !== null && el.scrollWidth > el.clientWidth + 1) {
+    const cs = getComputedStyle(el);
+    if (cs.textOverflow === 'ellipsis' || cs.whiteSpace === 'nowrap') {
+      const t = el.textContent.trim();
+      if (t) return t;
+    }
+  }
+  return null;
+}
+
+function placeTip(x, y) {
+  tip.style.left = '0px'; tip.style.top = '0px';   // mesurer d'abord
+  const r = tip.getBoundingClientRect();
+  let left = x + 2;
+  let top = y + 20;                                 // juste sous la souris
+  if (left + r.width > window.innerWidth - 8) left = window.innerWidth - 8 - r.width;
+  if (left < 8) left = 8;
+  if (top + r.height > window.innerHeight - 8) top = y - 14 - r.height;  // bascule au-dessus si pas la place
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+document.addEventListener('mousemove', (e) => {
+  let node = e.target, txt = null;
+  for (let i = 0; node && i < 5; i++, node = node.parentElement) {
+    txt = tipTextOf(node);
+    if (txt) break;
+  }
+  if (txt) {
+    if (tip.textContent !== txt) tip.textContent = txt;
+    tip.hidden = false;
+    placeTip(e.clientX, e.clientY);
+  } else if (!tip.hidden) {
+    tip.hidden = true;
+  }
+});
+// la bulle disparait des qu'on quitte la fenetre
+document.addEventListener('mouseleave', () => { tip.hidden = true; });

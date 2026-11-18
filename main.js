@@ -9,6 +9,11 @@ const git = require('./lib/git');
 let win = null;
 let drawerMode = false;       // true = la fenetre est en "tiroir" collee au bord droit
 
+// Fenetre transparente par-dessus du contenu accelere par le GPU (ex : une video YouTube)
+// => la zone transparente s'affichait en NOIR sous Windows. Desactiver l'acceleration
+// materielle pour notre petit widget corrige ce rendu. (A appeler avant app.ready.)
+app.disableHardwareAcceleration();
+
 app.setName('Cockpit');
 
 // Zone d'ecran utilisable (hors barre des taches).
@@ -47,6 +52,12 @@ function createWindow() {
 
   win.setAlwaysOnTop(true, 'floating');
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // En tiroir, si on bascule d'appli, on reaffirme le niveau "overlay"
+  // pour que la languette reste toujours visible au bord de l'ecran.
+  win.on('blur', () => {
+    if (drawerMode) win.setAlwaysOnTop(true, 'screen-saver');
+  });
 }
 
 app.whenReady().then(() => {
@@ -79,30 +90,94 @@ ipcMain.handle('win:autosize', (_e, h) => {
   const minH = drawerMode ? 360 : 140;
   const target = Math.max(minH, Math.min(Math.round(h), Math.round(screenH * 0.9)));
   if (Math.abs(target - cur) > 2) win.setContentSize(w, target, false);
-  if (drawerMode) placeDrawer();   // on reste colle au bord droit apres redimensionnement
+  // On recolle au bord droit seulement si le tiroir est ferme : si on recentrait
+  // pendant qu'il est ouvert, la fenetre pourrait "fuir" sous le curseur et se fermer.
+  if (drawerMode && !drawerOpen) placeDrawer();
 });
 
 // ---------- Mode tiroir ----------
-// Rend la fenetre "transparente aux clics" (on clique a travers) ou non.
-// { forward: true } => on recoit quand meme les mouvements de souris pour detecter le survol.
-ipcMain.handle('drawer:click-through', (_e, ignore) => {
-  if (!win) return;
-  win.setIgnoreMouseEvents(!!ignore, { forward: true });
-});
+// L'ouverture/fermeture est pilotee ici en suivant la VRAIE position du curseur
+// (screen.getCursorScreenPoint). C'est bien plus fiable que les evenements de la
+// page : ca marche meme quand la fenetre est "transparente aux clics".
+const STRIP_HIT = 22;     // largeur de la zone sensible au bord droit (px)
+const OPEN_DELAY = 140;   // temps de survol avant ouverture (ms)
+const POLL_MS = 90;       // frequence de verification du curseur
+let drawerOpen = false;   // true = tiroir deplie
+let pollTimer = null;
+let overSince = 0;        // depuis quand le curseur est sur la zone sensible
+
+function sendDrawerState(open) {
+  if (win && !win.isDestroyed()) win.webContents.send('drawer:state', open);
+}
+
+function openDrawerWin() {
+  if (drawerOpen) return;
+  drawerOpen = true;
+  win.setIgnoreMouseEvents(false);                 // la fenetre redevient cliquable
+  sendDrawerState(true);                           // le renderer anime l'ouverture
+}
+
+function closeDrawerWin() {
+  if (!drawerOpen) return;
+  drawerOpen = false;
+  win.setIgnoreMouseEvents(true, { forward: true }); // on clique de nouveau "a travers"
+  sendDrawerState(false);
+}
+
+// Verifie ou est le curseur et ouvre/ferme en consequence.
+function pollCursor() {
+  if (!win || win.isDestroyed() || !drawerMode) return;
+  const p = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  const inY = p.y >= b.y && p.y <= b.y + b.height;
+  const inWindow = inY && p.x >= b.x && p.x <= b.x + b.width;
+  const overStrip = inY && p.x >= b.x + b.width - STRIP_HIT;
+
+  if (!drawerOpen) {
+    // Ferme : on ouvre si le curseur reste sur le bord droit assez longtemps.
+    if (overStrip) {
+      if (!overSince) overSince = Date.now();
+      else if (Date.now() - overSince >= OPEN_DELAY) openDrawerWin();
+    } else {
+      overSince = 0;
+    }
+  } else if (!inWindow) {
+    // Ouvert : des que le curseur sort de la fenetre, on referme.
+    closeDrawerWin();
+    overSince = 0;
+  }
+}
 
 // Active / desactive le mode tiroir et replace la fenetre en consequence.
 ipcMain.handle('drawer:set-mode', (_e, on) => {
   if (!win) return { drawer: false };
   drawerMode = !!on;
+  drawerOpen = false; overSince = 0;
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+
   if (drawerMode) {
+    // En tiroir, la fenetre devient un "overlay" :
+    // - niveau 'screen-saver' : reste au-dessus meme quand on bascule d'appli (Alt+Tab) ;
+    // - hors de la liste Alt+Tab : on ne peut pas "basculer dessus", elle ne disparait plus derriere ;
+    // - visible sur tous les bureaux virtuels, meme au-dessus d'une appli plein ecran.
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setSkipTaskbar(true);
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.setIgnoreMouseEvents(true, { forward: true });   // ferme par defaut = clic a travers
     placeDrawer();
+    sendDrawerState(false);
+    pollTimer = setInterval(pollCursor, POLL_MS);         // on surveille le curseur
   } else {
-    win.setIgnoreMouseEvents(false);                     // fenetre classique = clics normaux
+    // Retour fenetre classique.
+    win.setAlwaysOnTop(true, 'floating');
+    win.setSkipTaskbar(false);
+    win.setVisibleOnAllWorkspaces(false);
+    win.setIgnoreMouseEvents(false);                     // clics normaux
     const wa = workArea();
     const [w, h] = win.getSize();
     win.setPosition(Math.round(wa.x + (wa.width - w) / 2),
                     Math.round(wa.y + (wa.height - h) / 2), false);
+    sendDrawerState(false);
   }
   return { drawer: drawerMode };
 });
