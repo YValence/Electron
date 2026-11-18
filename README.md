@@ -1,4 +1,4 @@
-# Agent Huddle
+# Cockpit
 
 Popup flottant (always-on-top) pour suivre tes **agents Claude Code en temps réel** et explorer un **dépôt Git** avec un graphe type GitKraken.
 

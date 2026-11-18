@@ -1,18 +1,21 @@
-// Agent Huddle — processus principal Electron
+// Cockpit — processus principal Electron
 // Fenetre flottante toujours au-dessus + ponts IPC vers les sessions Claude et Git.
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
 const sessions = require('./lib/sessions');
 const git = require('./lib/git');
 
 let win = null;
 
+app.setName('Cockpit');
+
 function createWindow() {
   win = new BrowserWindow({
-    width: 560,
-    height: 660,
-    minWidth: 380,
-    minHeight: 420,
+    title: 'Cockpit',
+    width: 480,
+    height: 320,
+    minWidth: 360,
+    minHeight: 140,
     frame: false,              // on dessine notre propre barre de titre
     transparent: true,
     resizable: true,
@@ -49,6 +52,15 @@ ipcMain.handle('win:toggle-pin', () => {
   const next = !win.isAlwaysOnTop();
   win.setAlwaysOnTop(next, 'floating');
   return next;
+});
+
+// Hauteur de la fenetre ajustee au contenu (largeur conservee)
+ipcMain.handle('win:autosize', (_e, h) => {
+  if (!win) return;
+  const [w, cur] = win.getContentSize();
+  const screenH = screen.getPrimaryDisplay().workAreaSize.height;
+  const target = Math.max(140, Math.min(Math.round(h), Math.round(screenH * 0.9)));
+  if (Math.abs(target - cur) > 2) win.setContentSize(w, target, false);
 });
 
 // ---------- Sessions Claude ----------

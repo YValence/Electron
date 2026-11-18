@@ -1,4 +1,4 @@
-/* Agent Huddle — style monochrome (inspire coss.com/ui) + accents couleur cibles */
+/* Cockpit — style monochrome (inspire coss.com/ui) + accents couleur cibles */
 :root {
   --bg:        #09090b;
   --surface:   #0e0e11;
@@ -18,7 +18,7 @@
   --radius: 16px;
   --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --disp: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --disp: var(--sans);   /* titres = meme famille que le texte, juste plus gras (uniformite) */
 }
 
 * { box-sizing: border-box; }
@@ -75,22 +75,78 @@ body {
 .body[hidden] { display: none; }
 
 /* ---------- Carte agent ---------- */
-.agent { display: grid; grid-template-columns: 34px 1fr auto; gap: 13px; align-items: start;
-  border: 1px solid var(--line); border-radius: 13px; padding: 14px; margin-bottom: 9px;
-  background: var(--surface); transition: border-color .15s; }
-.agent:hover { border-color: var(--line-2); }
-.agent.attn { border-color: color-mix(in srgb, var(--ask) 45%, var(--line-2)); }
+.agent { border: 1px solid var(--line); border-radius: 13px; margin-bottom: 9px;
+  background: var(--surface); transition: border-color .15s, box-shadow .15s; overflow: hidden; }
+.agent:hover { border-color: var(--line-2); transform: translateY(-1px); }
+.agent { transition: border-color .15s, box-shadow .15s, transform .15s; }
+.agent.enter { animation: cardIn .34s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+/* contour jaune anime quand l'agent travaille */
+.agent.working { border-color: var(--ask); animation: workGlow 2.6s ease-in-out infinite; }
+@keyframes workGlow {
+  0%, 100% { box-shadow: 0 0 0 1px var(--ask), 0 0 16px -8px rgba(245,181,68,.5); }
+  50% { box-shadow: 0 0 0 1px var(--ask), 0 0 22px -4px rgba(245,181,68,.75); }
+}
+
+.agent-head { display: grid; grid-template-columns: 34px 1fr auto 26px; gap: 13px; align-items: start;
+  padding: 14px; cursor: pointer; }
+/* bouton de depli : carre avec fleche, place en haut */
+.expand { align-self: start; width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface-2); color: var(--fg-3);
+  cursor: pointer; padding: 0; transition: background .15s, color .15s, border-color .15s; }
+.expand:hover { color: var(--fg); border-color: var(--fg-4); background: var(--surface-3); }
+.expand svg { width: 15px; height: 15px; transform: rotate(180deg); transition: transform .22s ease; }
+.agent.open .expand { color: var(--fg); border-color: var(--fg-4); }
+.agent.open .expand svg { transform: rotate(0deg); }
+.sep { color: var(--fg-4); }
+.subcount { font-family: var(--mono); font-size: 11px; color: var(--fg-2); }
+
+/* sous-taches */
+.subtasks { border-top: 1px dashed var(--line-2); padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 1px; }
+.subtasks[hidden] { display: none; }
+.agent.open .subtasks { animation: reveal .26s ease both; }
+@keyframes reveal { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.subtask { display: flex; align-items: flex-start; gap: 10px; padding: 5px 2px; font-size: 12.5px; color: var(--fg-2); }
+.st-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--fg-4); flex: none; margin-top: 1px; position: relative; }
+.st-dot.done { background: var(--done); border-color: var(--done); }
+.st-dot.doing { border-color: var(--ask); }
+.st-dot.doing::after { content: ""; position: absolute; inset: 2px; border-radius: 50%; background: var(--ask); animation: blip 1.5s infinite; }
+.subtask.done .st-txt { color: var(--fg-4); text-decoration: line-through; }
+.subtask.doing .st-txt { color: var(--fg); font-weight: 600; }
+.subtask-empty { font-size: 12px; color: var(--fg-4); padding: 4px 2px; }
 
 .mono-badge { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
-  border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg-2); }
-.mono-badge .robot { width: 22px; height: 22px; display: block; }
+  border: 1px solid var(--line-2); background: var(--surface-2);
+  transition: border-color .2s, box-shadow .2s; }
+.mono-badge .robot { width: 22px; height: 22px; display: block; transition: opacity .3s; }
+/* l'agent dort quand il ne travaille pas : icone attenuee et immobile */
+.agent:not(.working) .mono-badge .robot { opacity: .45; }
+/* l'agent travaille : badge colore, leger balancement "vivant" */
+.agent.working .mono-badge { border-color: color-mix(in srgb, var(--ask) 50%, var(--line-2));
+  box-shadow: 0 0 12px -4px var(--ask); animation: bob 2.6s ease-in-out infinite; }
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-2.5px) rotate(-3deg); } }
 .a-main { min-width: 0; padding-top: 1px; }
 .a-name { font-family: var(--disp); font-weight: 600; font-size: 14.5px; letter-spacing: -.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a-task { font-size: 12.5px; color: var(--fg-3); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.a-meta { margin-top: 9px; display: flex; align-items: center; gap: 10px; }
+.a-meta { margin-top: 9px; display: flex; align-items: center; gap: 8px; font-family: var(--mono); }
 .phase { font-family: var(--mono); font-size: 11px; color: var(--fg-3); }
+
+/* barre de progression (sous-taches terminees / total) */
+.progress { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
+.ptrack { flex: 1; height: 5px; border-radius: 99px; background: var(--surface-3); overflow: hidden; position: relative; }
+.ptrack > span { display: block; height: 100%; border-radius: 99px; position: relative; overflow: hidden;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--run) 60%, #000), var(--run));
+  box-shadow: 0 0 8px -2px var(--run); transition: width .5s cubic-bezier(.2,.7,.3,1); }
+.ptrack > span.full { background: linear-gradient(90deg, color-mix(in srgb, var(--done) 60%, #000), var(--done));
+  box-shadow: 0 0 8px -2px var(--done); }
+/* reflet qui balaye la barre quand l'agent travaille */
+.agent.working .ptrack > span::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+  transform: translateX(-100%); animation: sheen 1.9s ease-in-out infinite; }
+@keyframes sheen { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
+.pfrac { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); min-width: 30px; text-align: right; }
 
 .a-side { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; white-space: nowrap; }
 .status { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
@@ -164,7 +220,17 @@ body {
 .checkout-toast[hidden] { display: none; }
 .checkout-toast .ok { color: var(--done); }
 
-/* scrollbar discrete */
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; border: 2px solid var(--surface); }
-::-webkit-scrollbar-track { background: transparent; }
+/* scrollbar : masquee au repos, visible seulement pendant le defilement */
+.body::-webkit-scrollbar { width: 10px; }
+.body::-webkit-scrollbar-track { background: transparent; }
+.body::-webkit-scrollbar-thumb { background: transparent; border-radius: 9px;
+  border: 2px solid transparent; background-clip: padding-box; }
+.body.is-scrolling::-webkit-scrollbar-thumb { background: var(--line-2); background-clip: padding-box; }
+/* menu des branches : scrollbar fine classique */
+.branch-menu::-webkit-scrollbar { width: 8px; }
+.branch-menu::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; }
+
+/* accessibilite : on coupe les animations si l'utilisateur le demande */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
