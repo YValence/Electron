@@ -52,8 +52,10 @@ function relTime(ms) {
   if (m < 60) return m + ' min';
   return Math.round(m / 60) + ' h';
 }
-const STATUS_LABEL = { running: 'En cours', done: 'Termine', idle: 'En pause' };
-const STATUS_CLASS = { running: 'run', done: 'done', idle: 'idle' };
+const STATUS_LABEL = { running: 'En cours', done: 'Termine', idle: 'En pause',
+  ask: 'Question', perm: 'Permission', plan: 'Plan' };
+const STATUS_CLASS = { running: 'run', done: 'done', idle: 'idle',
+  ask: 'ask', perm: 'perm', plan: 'plan' };
 const ST_CLASS = { completed: 'done', in_progress: 'doing', pending: 'todo' };
 
 const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>';
@@ -100,7 +102,7 @@ function createCard(a) {
          <div class="a-name"></div>
          <div class="a-task"></div>
          <div class="a-meta"><span class="phase"></span><span class="sep"> · </span><span class="subcount"></span></div>
-         <div class="progress" hidden><div class="ptrack"><span></span></div><span class="pfrac"></span></div>
+         <div class="progress" hidden><div class="segs"></div><span class="pfrac"></span></div>
        </div>
        <div class="a-side">
          <span class="status"><span class="dot"></span><span class="st-label"></span></span>
@@ -108,18 +110,29 @@ function createCard(a) {
        </div>
        <button class="expand" title="Derouler">${CHEVRON}</button>
      </div>
-     <div class="subtasks" hidden></div>`;
+     <div class="waitbox" hidden></div>
+     <div class="subtasks" hidden>
+       <div class="sublist"></div>
+       <div class="subfoot"><button class="wbtn ghost open-code">Ouvrir dans VS Code</button></div>
+     </div>`;
   el.querySelector('.agent-head').addEventListener('click', () => {
     openId = (openId === a.id) ? null : a.id;   // accordeon
     applyOpenStates();
     fitWindow();
+  });
+  el.querySelector('.open-code').addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.api.openEditor(el.dataset.cwd);
   });
   el.addEventListener('animationend', () => el.classList.remove('enter'), { once: true });
   return el;
 }
 
 function updateCard(el, a) {
+  el.dataset.cwd = a.cwd || '';
   el.classList.toggle('working', a.status === 'running');  // contour jaune + robot anime
+  el.classList.remove('wait-ask', 'wait-perm', 'wait-plan');
+  if (a.waiting) el.classList.add('wait-' + a.waiting.kind);  // accent selon l'attente
   el.querySelector('.mono-badge').style.color = robotColor(a.project);
   el.querySelector('.a-name').textContent = a.project;
   el.querySelector('.a-task').textContent = a.last || '…';
@@ -130,13 +143,18 @@ function updateCard(el, a) {
   el.querySelector('.sep').hidden = !n;
   el.querySelector('.subcount').textContent = n ? `${n} sous-tache${n > 1 ? 's' : ''}` : '';
 
+  // Progression : un trait par sous-tache, remplis jusqu'a celles terminees.
   const prog = el.querySelector('.progress');
   prog.hidden = !n;
   if (n) {
-    const pct = Math.round((doneN / n) * 100);
-    const span = prog.querySelector('.ptrack > span');
-    span.style.width = pct + '%';
-    span.classList.toggle('full', pct === 100);
+    const segs = prog.querySelector('.segs');
+    const segSig = n + '/' + doneN;
+    if (segs._sig !== segSig) {
+      segs._sig = segSig;
+      segs.classList.toggle('full', doneN === n);
+      segs.innerHTML = Array.from({ length: n },
+        (_, i) => `<i class="${i < doneN ? 'on' : ''}"></i>`).join('');
+    }
     prog.querySelector('.pfrac').textContent = `${doneN}/${n}`;
   }
 
@@ -145,7 +163,33 @@ function updateCard(el, a) {
   st.querySelector('.st-label').textContent = STATUS_LABEL[a.status];
   el.querySelector('.time').textContent = relTime(a.ageMs);
 
-  const sub = el.querySelector('.subtasks');
+  // Panneau d'attente : question / permission / plan (toujours visible, meme carte repliee).
+  const wb = el.querySelector('.waitbox');
+  if (a.waiting) {
+    const w = a.waiting;
+    const sig = [w.kind, w.title, w.detail, (w.options || []).join('~')].join('|');
+    wb.hidden = false;
+    wb.className = 'waitbox ' + w.kind;
+    if (wb._sig !== sig) {
+      wb._sig = sig;
+      const detail = w.detail
+        ? `<div class="wdetail${w.kind === 'perm' ? ' code' : ''}">${esc(w.detail)}</div>` : '';
+      const opts = (w.options && w.options.length)
+        ? `<ul class="wopts">${w.options.map(o => `<li>${esc(o)}</li>`).join('')}</ul>` : '';
+      wb.innerHTML =
+        `<span class="wtag">${esc(w.title)}</span>${detail}${opts}` +
+        `<div class="wactions"><button class="wbtn open-code2">Ouvrir VS Code</button></div>`;
+      wb.querySelector('.open-code2').addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.api.openEditor(el.dataset.cwd);
+      });
+    }
+  } else {
+    wb.hidden = true;
+    wb._sig = null;
+  }
+
+  const sub = el.querySelector('.sublist');
   const sig = a.todos.map(t => t.status + ':' + t.content).join('|');
   if (sub._sig !== sig) {
     sub._sig = sig;
@@ -159,7 +203,7 @@ function updateCard(el, a) {
 
   const open = a.id === openId;
   el.classList.toggle('open', open);
-  sub.hidden = !open;
+  el.querySelector('.subtasks').hidden = !open;
 }
 
 function renderAgents(agents) {

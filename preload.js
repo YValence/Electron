@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // sessions Claude
   listSessions: () => ipcRenderer.invoke('sessions:list'),
+  openEditor:   (dir) => ipcRenderer.invoke('app:open-editor', dir),
 
   // git
   pickRepo:    () => ipcRenderer.invoke('git:pick-repo'),
