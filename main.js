@@ -1,6 +1,7 @@
 // Cockpit — processus principal Electron
 // Fenetre flottante toujours au-dessus + ponts IPC vers les sessions Claude et Git.
-const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, shell } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const sessions = require('./lib/sessions');
 const git = require('./lib/git');
@@ -61,6 +62,24 @@ ipcMain.handle('win:autosize', (_e, h) => {
   const screenH = screen.getPrimaryDisplay().workAreaSize.height;
   const target = Math.max(140, Math.min(Math.round(h), Math.round(screenH * 0.9)));
   if (Math.abs(target - cur) > 2) win.setContentSize(w, target, false);
+});
+
+// ---------- Ouvrir le projet dans VS Code ----------
+// Cockpit ne peut pas repondre a la place de l'agent (il ne fait que lire les fichiers) :
+// ce bouton amene l'utilisateur la ou il repond vraiment. Si "code" n'existe pas,
+// on ouvre au moins le dossier dans l'explorateur.
+ipcMain.handle('app:open-editor', async (_e, dir) => {
+  if (!dir) return { ok: false };
+  try {
+    const cmd = process.platform === 'win32' ? 'code.cmd' : 'code';
+    const child = spawn(cmd, [dir], { detached: true, stdio: 'ignore', shell: true });
+    child.on('error', () => shell.openPath(dir));
+    child.unref();
+    return { ok: true };
+  } catch {
+    shell.openPath(dir);
+    return { ok: true };
+  }
 });
 
 // ---------- Sessions Claude ----------
