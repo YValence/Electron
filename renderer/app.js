@@ -36,6 +36,66 @@ $('pinBtn').addEventListener('click', async () => {
 });
 $('pinBtn').classList.add('active'); // epingle par defaut
 
+/* ============ Mode tiroir ============ */
+// La fenetre se cache sur le bord droit ; seule une fine languette depasse.
+// On passe la souris dessus -> elle glisse vers l'interieur et reste ouverte
+// tant que la souris est dessus. On referme des qu'elle sort.
+const STRIP = 8;         // largeur visible de la languette (doit matcher --strip en CSS)
+const OPEN_DELAY = 150;  // ms de survol avant ouverture (evite les ouvertures par accident)
+let drawerMode = false;
+let drawerOpen = false;
+let hoverTimer = null;
+
+// On se souvient du choix (tiroir ou fenetre classique) d'une fois sur l'autre.
+function loadDrawerPref() { try { return localStorage.getItem('cockpit.drawer') === '1'; } catch { return false; } }
+function saveDrawerPref(v) { try { localStorage.setItem('cockpit.drawer', v ? '1' : '0'); } catch {} }
+
+async function setDrawerMode(on) {
+  drawerMode = on;
+  saveDrawerPref(on);
+  document.body.classList.toggle('drawer', on);
+  $('drawerBtn').classList.toggle('active', on);
+  await window.api.setDrawerMode(on);
+  if (on) closeDrawer();          // demarre ferme (replie sur le bord)
+  else { drawerOpen = false; document.body.classList.remove('drawer-open'); }
+  fitWindow();
+}
+
+function openDrawer() {
+  if (!drawerMode || drawerOpen) return;
+  drawerOpen = true;
+  document.body.classList.add('drawer-open');   // -> glisse vers l'interieur (CSS)
+  window.api.setClickThrough(false);            // la fenetre redevient cliquable
+}
+
+function closeDrawer() {
+  if (!drawerMode) return;
+  drawerOpen = false;
+  document.body.classList.remove('drawer-open'); // -> glisse dehors (CSS)
+  window.api.setClickThrough(true);              // on clique de nouveau "a travers"
+}
+
+// Survol de la languette. Meme en "clic a travers", le main nous transmet les
+// mouvements de souris (forward:true) : on sait donc quand on effleure le bord droit.
+window.addEventListener('mousemove', (e) => {
+  if (!drawerMode || drawerOpen) return;
+  const overHandle = e.clientX >= window.innerWidth - (STRIP + 6);
+  if (overHandle) {
+    if (!hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; openDrawer(); }, OPEN_DELAY);
+  } else if (hoverTimer) {
+    clearTimeout(hoverTimer); hoverTimer = null;
+  }
+});
+
+// La souris quitte la carte -> on referme le tiroir.
+$('count').closest('.window').addEventListener('mouseleave', () => {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+  if (drawerOpen) closeDrawer();
+});
+
+$('drawerBtn').addEventListener('click', () => setDrawerMode(!drawerMode));
+if (loadDrawerPref()) setDrawerMode(true);   // restaure le choix precedent
+
 /* ============ Onglets ============ */
 const panels = { agents: $('tab-agents'), git: $('tab-git') };
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -113,7 +173,7 @@ function createCard(a) {
      <div class="waitbox" hidden></div>
      <div class="subtasks" hidden>
        <div class="sublist"></div>
-       <div class="subfoot"><button class="wbtn ghost open-code">Ouvrir dans VS Code</button></div>
+       <div class="subfoot"><button class="wbtn open-code">Ouvrir dans VS Code</button></div>
      </div>`;
   el.querySelector('.agent-head').addEventListener('click', () => {
     openId = (openId === a.id) ? null : a.id;   // accordeon
@@ -176,12 +236,24 @@ function updateCard(el, a) {
         ? `<div class="wdetail${w.kind === 'perm' ? ' code' : ''}">${esc(w.detail)}</div>` : '';
       const opts = (w.options && w.options.length)
         ? `<ul class="wopts">${w.options.map(o => `<li>${esc(o)}</li>`).join('')}</ul>` : '';
+      const copyBtn = w.detail
+        ? `<button class="wbtn copy-detail">${w.kind === 'perm' ? 'Copier la commande' : 'Copier'}</button>`
+        : '';
       wb.innerHTML =
         `<span class="wtag">${esc(w.title)}</span>${detail}${opts}` +
-        `<div class="wactions"><button class="wbtn open-code2">Ouvrir VS Code</button></div>`;
+        `<div class="wactions">` +
+          `<button class="wbtn pri open-code2">Ouvrir VS Code</button>${copyBtn}` +
+        `</div>`;
       wb.querySelector('.open-code2').addEventListener('click', (e) => {
         e.stopPropagation();
         window.api.openEditor(el.dataset.cwd);
+      });
+      const cb = wb.querySelector('.copy-detail');
+      if (cb) cb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.api.copy(w.detail);
+        cb.textContent = 'Copié';
+        setTimeout(() => { cb.textContent = w.kind === 'perm' ? 'Copier la commande' : 'Copier'; }, 1200);
       });
     }
   } else {
@@ -236,24 +308,81 @@ document.querySelectorAll('.body').forEach(b => {
   });
 });
 
+let lastAgents = [];   // derniere liste connue (sert aussi a detecter les depots Git)
+
 async function refreshAgents() {
   const res = await window.api.listSessions();
-  if (res.ok) renderAgents(res.agents);
+  if (res.ok) {
+    lastAgents = res.agents;
+    renderAgents(res.agents);
+    refreshRepos();   // met a jour les depots detectes a partir des cwd
+  }
 }
 refreshAgents();
 setInterval(refreshAgents, 3000); // live : toutes les 3 s
 
 /* ============ Git ============ */
 let currentRepo = null;
+let repos = [];            // depots detectes { repo, name, current }
+let reposSig = '';         // signature des dossiers scannes (evite un re-scan inutile)
 
-$('pickRepoBtn').addEventListener('click', async () => {
-  const res = await window.api.pickRepo();
-  if (res.ok) { currentRepo = res.repo; loadGit(); }
-  else if (res.error) toast(res.error, false);
-});
+// Memorisation (par navigateur) : depots ajoutes a la main + dernier depot choisi.
+function loadManual() { try { return JSON.parse(localStorage.getItem('cockpit.manualRepos') || '[]'); } catch { return []; } }
+function saveManual(a) { try { localStorage.setItem('cockpit.manualRepos', JSON.stringify(a)); } catch {} }
+function getLastRepo() { try { return localStorage.getItem('cockpit.lastRepo') || ''; } catch { return ''; } }
+function setLastRepo(r) { try { localStorage.setItem('cockpit.lastRepo', r); } catch {} }
+
+// Scanne les dossiers des sessions + ajouts manuels -> liste de depots Git uniques.
+async function refreshRepos(force) {
+  const manual = loadManual();
+  const dirs = [...new Set([...lastAgents.map(a => a.cwd).filter(Boolean), ...manual])];
+  const sig = dirs.slice().sort().join('|');
+  if (!force && sig === reposSig) return;   // rien de nouveau a scanner
+  reposSig = sig;
+
+  const res = dirs.length ? await window.api.gitRepos(dirs) : { ok: true, repos: [] };
+  repos = res.ok ? res.repos : [];
+  renderRepoMenu();
+
+  // Choix du depot courant : garde l'actuel s'il existe encore, sinon dernier connu, sinon 1er.
+  if (!currentRepo || !repos.some(r => r.repo === currentRepo)) {
+    const pick = repos.find(r => r.repo === getLastRepo()) || repos[0];
+    if (pick) { currentRepo = pick.repo; setLastRepo(currentRepo); loadGit(); }
+    else { currentRepo = null; showGitEmpty(); }
+  }
+}
+
+function renderRepoMenu() {
+  const cur = repos.find(r => r.repo === currentRepo);
+  $('curRepo').textContent = cur ? cur.name : (repos.length ? 'Choisir…' : 'Aucun depot');
+  $('repoItems').innerHTML = repos.length
+    ? repos.map(r => `
+      <div class="bitem" data-repo="${esc(r.repo)}" ${r.repo === currentRepo ? 'aria-current="true"' : ''}>
+        <span class="ln"></span><span class="nm">${esc(r.name)}</span>
+        <span class="rbranch">${esc(r.current || '')}</span><span class="ck">&#10003;</span>
+      </div>`).join('')
+    : `<div class="rnone">Aucun depot detecte dans les sessions.</div>`;
+  $('repoItems').querySelectorAll('.bitem').forEach(i =>
+    i.addEventListener('click', () => selectRepo(i.dataset.repo)));
+}
+
+function selectRepo(repo) {
+  openRepoMenu(false);
+  if (repo === currentRepo) return;
+  currentRepo = repo;
+  setLastRepo(repo);
+  loadGit();
+}
+
+function showGitEmpty() {
+  $('gitEmpty').hidden = false;
+  $('gitWrap').hidden = true;
+  $('branchSwitch').hidden = true;
+  fitWindow();
+}
 
 async function loadGit() {
-  if (!currentRepo) return;
+  if (!currentRepo) { showGitEmpty(); return; }
   const res = await window.api.gitData(currentRepo);
   if (!res.ok) { toast(res.error, false); return; }
   renderGit(res);
@@ -339,7 +468,7 @@ function refChips(refs) {
 
 function renderGit(data) {
   currentRepo = data.repo;
-  $('repoName').textContent = data.name;
+  $('curRepo').textContent = data.name;
   $('tabGitN').textContent = data.commits.length;
   $('gitEmpty').hidden = true;
   $('gitWrap').hidden = false;
@@ -349,7 +478,7 @@ function renderGit(data) {
   const rows = $('gitRows');
   rows.innerHTML = data.commits.map(c => `
     <div class="commit-row" style="height:${ROW_H}px">
-      <div class="commit-msg">${esc(c.subject)} ${refChips(c.refs)}</div>
+      <div class="commit-msg"><span class="subj">${esc(c.subject)}</span>${refChips(c.refs)}</div>
       <div class="commit-sub"><span class="sha">${esc(c.hash.slice(0,7))}</span><span>${esc(c.an)}</span><span>${esc(c.ar)}</span></div>
     </div>`).join('');
 
@@ -381,9 +510,29 @@ async function doCheckout(branch) {
 /* menu branche */
 const menu = $('branchMenu'), bbtn = $('branchBtn');
 function openMenu(open) { menu.hidden = !open; bbtn.setAttribute('aria-expanded', open); }
-bbtn.addEventListener('click', e => { e.stopPropagation(); openMenu(menu.hidden); });
-document.addEventListener('click', () => openMenu(false));
+bbtn.addEventListener('click', e => { e.stopPropagation(); openRepoMenu(false); openMenu(menu.hidden); });
 menu.addEventListener('click', e => e.stopPropagation());
+
+/* menu depot (multi-depots) */
+const rmenu = $('repoMenu'), rbtn = $('repoBtn');
+function openRepoMenu(open) { rmenu.hidden = !open; rbtn.setAttribute('aria-expanded', open); }
+rbtn.addEventListener('click', e => { e.stopPropagation(); openMenu(false); openRepoMenu(rmenu.hidden); });
+rmenu.addEventListener('click', e => e.stopPropagation());
+$('addRepoBtn').addEventListener('click', async e => {
+  e.stopPropagation();
+  openRepoMenu(false);
+  const res = await window.api.pickRepo();
+  if (!res.ok) { if (res.error) toast(res.error, false); return; }
+  const m = loadManual();
+  if (!m.includes(res.repo)) { m.push(res.repo); saveManual(m); }
+  currentRepo = res.repo;
+  setLastRepo(res.repo);
+  await refreshRepos(true);   // re-scan immediat (le depot ajoute apparait)
+  loadGit();
+});
+
+/* un clic ailleurs ferme les deux menus */
+document.addEventListener('click', () => { openMenu(false); openRepoMenu(false); });
 
 /* toast */
 let toastTimer;

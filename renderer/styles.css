@@ -16,6 +16,7 @@
   --done:  #3ecf8e;   /* termine */
   --merge: #a78bfa;   /* branche / merge */
   --radius: 16px;
+  --strip: 8px;              /* largeur de la languette du tiroir (doit matcher STRIP en JS) */
   --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
   --disp: var(--sans);   /* titres = meme famille que le texte, juste plus gras (uniformite) */
@@ -32,6 +33,7 @@ body {
 }
 
 .window {
+  position: relative;        /* repere pour la languette (.handle) en absolu */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -41,6 +43,29 @@ body {
   overflow: hidden;
   box-shadow: 0 1px 0 0 rgba(255,255,255,.04) inset;
 }
+
+/* ---------- Mode tiroir (la fenetre se retracte sur le bord droit) ---------- */
+/* Ferme : la carte glisse vers la droite, seule la languette (--strip) depasse. */
+body.drawer .window {
+  transition: transform .28s cubic-bezier(.2,.7,.3,1);
+  transform: translateX(calc(100% - var(--strip)));
+  border-top-right-radius: 0;        /* colle au bord droit de l'ecran */
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+/* Ouvert : la carte revient entierement a l'ecran. */
+body.drawer.drawer-open .window { transform: translateX(0); }
+
+/* La languette : fine barre coloree, seul repere visible quand c'est ferme. */
+.handle { display: none; }
+body.drawer .handle {
+  display: block; position: absolute; top: 0; left: 0; z-index: 5;
+  width: var(--strip); height: 100%;
+  background: linear-gradient(180deg, var(--run), var(--merge));
+  border-top-left-radius: var(--radius); border-bottom-left-radius: var(--radius);
+  box-shadow: -2px 0 12px -4px rgba(0,0,0,.6);
+}
+body.drawer.drawer-open .handle { opacity: 0; }   /* on la masque une fois ouvert */
 
 /* ---------- Barre de titre (draggable) ---------- */
 .titlebar {
@@ -130,11 +155,15 @@ body {
 .wopts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 .wopts li { font-size: 12px; color: var(--fg-2); padding: 7px 11px; border: 1px solid var(--line-2);
   border-radius: 8px; background: var(--surface-2); }
-.wactions { display: flex; gap: 8px; margin-top: 2px; }
-.wbtn { font: inherit; font-family: var(--sans); font-weight: 600; font-size: 12px; border-radius: 8px;
-  padding: 6px 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg); cursor: pointer; }
-.wbtn:hover { border-color: var(--fg-4); background: var(--surface-3); }
-.wbtn.ghost { color: var(--fg-2); }
+.wactions { display: flex; gap: 8px; margin-top: 4px; }
+/* boutons facon maquette : une pastille foncee pleine, et une variante claire (.pri) */
+.wbtn { font: inherit; font-family: var(--sans); font-weight: 600; font-size: 12.5px; border-radius: 9px;
+  padding: 8px 15px; border: 1px solid var(--line-2); background: var(--surface-3); color: var(--fg); cursor: pointer;
+  transition: background .15s, border-color .15s, transform .08s; }
+.wbtn:hover { border-color: var(--fg-4); background: var(--surface-2); }
+.wbtn:active { transform: translateY(1px); }
+.wbtn.pri { background: var(--white); color: var(--bg); border-color: var(--white); }
+.wbtn.pri:hover { background: #fff; border-color: #fff; }
 
 /* accent de la carte quand l'agent attend une action humaine */
 .agent.wait-ask, .agent.wait-perm { border-color: color-mix(in srgb, var(--ask) 55%, var(--line));
@@ -203,19 +232,34 @@ body {
 /* ---------- Git ---------- */
 .git-top { display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin: 4px 2px 14px; flex-wrap: wrap; }
-.repo { font-family: var(--disp); font-weight: 600; font-size: 14px; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.git-actions { display: flex; align-items: center; gap: 8px; }
+.git-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* selecteur de depots (plusieurs depots detectes) */
+.repo-switch { position: relative; min-width: 0; }
+/* le bouton est a gauche : le menu s'ouvre vers la droite (sinon il sort de la fenetre) */
+#repoMenu { left: 0; right: auto; max-width: calc(100vw - 24px); }
+.repo-btn { max-width: 220px; }
+.repo-btn #curRepo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-btn .cur-dot { background: var(--run); }
+.rbranch { font-family: var(--mono); font-size: 10px; color: var(--fg-4); margin-left: auto; padding-left: 8px; }
+.rnone { font-size: 11px; color: var(--fg-4); padding: 8px 9px; }
+.madd { width: 100%; text-align: left; font: inherit; font-family: var(--mono); font-size: 11px;
+  color: var(--run); background: transparent; border: none; border-top: 1px solid var(--line);
+  margin-top: 4px; padding: 9px 9px 6px; cursor: pointer; }
+.madd:hover { color: var(--fg); }
 
 .btn { font: inherit; font-family: var(--sans); font-weight: 600; font-size: 12.5px; border-radius: 9px;
   padding: 7px 13px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg); cursor: pointer; }
 .btn:hover { border-color: var(--fg-4); }
 .btn.pri { background: var(--white); color: var(--bg); border-color: var(--white); }
 
-.branch-switch { position: relative; }
+.branch-switch { position: relative; min-width: 0; }
 .branch-btn { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--fg); cursor: pointer;
   border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 11px; background: var(--surface-2);
-  display: inline-flex; align-items: center; gap: 7px; }
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-width: 0; }
+/* le nom de branche se raccourcit au lieu de deborder */
+.branch-btn #curBranch { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-btn .cur-dot, .branch-btn .car { flex: none; }
 .branch-btn:hover { border-color: var(--fg-4); }
 .branch-btn .cur-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg); }
 .branch-btn .car { color: var(--fg-3); font-size: 9px; }
@@ -239,8 +283,11 @@ body {
 .git-rows { min-width: 0; }
 .commit-row { display: flex; flex-direction: column; justify-content: center; border-radius: 9px; padding: 2px 8px; }
 .commit-row:hover { background: var(--surface-2); }
-.commit-msg { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  display: flex; align-items: center; gap: 8px; }
+.commit-msg { font-size: 13px; font-weight: 500; overflow: hidden;
+  display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* le message se raccourcit avec "…" ; les etiquettes gardent leur taille */
+.commit-msg .subj { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.commit-msg .chip { flex: none; }
 .commit-sub { font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); display: flex; gap: 10px; margin-top: 2px; }
 .commit-sub .sha { color: var(--fg-3); }
 .chip { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--merge);

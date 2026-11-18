@@ -16,8 +16,10 @@ Popup flottant (always-on-top) pour suivre tes **agents Claude Code en temps ré
   - un bouton **Ouvrir dans VS Code** pour aller répondre.
   > Cockpit ne fait que **lire** les fichiers : il te montre ce qui attend et t'amène
   > au bon endroit, mais il ne peut pas répondre à la place de l'agent.
-- **Onglet Git** — choisis un dépôt, vois le graphe des branches/merges,
-  change de branche d'un clic (`git checkout`).
+- **Onglet Git** — **détecte automatiquement** les dépôts des sessions Claude en cours
+  (le `cwd` de chaque agent est résolu en racine Git) et permet de **basculer entre
+  plusieurs dépôts** (plus « Ajouter un dépôt… » ; les ajouts et le dernier choisi
+  sont mémorisés). Graphe des branches/merges type GitKraken, `checkout` d'un clic.
 - Fenêtre **sans cadre, déplaçable, épinglée par-dessus** les autres apps.
 
 ## Lancer
@@ -54,5 +56,4 @@ renderer/
 
 ## Idées suivantes
 
-- Mémoriser le dernier dépôt Git ouvert.
 - Pull / fetch depuis l'onglet Git.

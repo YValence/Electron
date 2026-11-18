@@ -8,12 +8,18 @@ contextBridge.exposeInMainWorld('api', {
   togglePin: () => ipcRenderer.invoke('win:toggle-pin'),
   autosize:  (h) => ipcRenderer.invoke('win:autosize', h),
 
+  // mode tiroir
+  setDrawerMode:  (on)     => ipcRenderer.invoke('drawer:set-mode', on),
+  setClickThrough:(ignore) => ipcRenderer.invoke('drawer:click-through', ignore),
+
   // sessions Claude
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   openEditor:   (dir) => ipcRenderer.invoke('app:open-editor', dir),
+  copy:         (text) => ipcRenderer.invoke('clipboard:write', text),
 
   // git
   pickRepo:    () => ipcRenderer.invoke('git:pick-repo'),
+  gitRepos:    (dirs) => ipcRenderer.invoke('git:repos', dirs),
   gitData:     (repo) => ipcRenderer.invoke('git:data', repo),
   gitCheckout: (repo, branch) => ipcRenderer.invoke('git:checkout', repo, branch)
 });
