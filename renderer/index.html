@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Huddle</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="window">
+    <!-- barre de titre draggable -->
+    <div class="titlebar">
+      <span class="brand">Agent Huddle <span class="ui">ui</span></span>
+      <span class="count" id="count">—</span>
+      <span class="spacer"></span>
+      <button class="ic" id="pinBtn" title="Epingler par-dessus">&#9635;</button>
+      <button class="ic" id="minBtn" title="Reduire">&#8211;</button>
+      <button class="ic" id="closeBtn" title="Fermer">&#10005;</button>
+    </div>
+
+    <!-- onglets -->
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="agents">Agents <span class="n" id="tabAgentsN">0</span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="git">Git <span class="n" id="tabGitN">—</span></button>
+    </div>
+
+    <!-- ===== AGENTS ===== -->
+    <div class="body" id="tab-agents">
+      <div id="agentsList"></div>
+      <div class="empty" id="agentsEmpty" hidden>
+        <p>Aucune session Claude active.</p>
+        <p class="sub">Lance <code>claude</code> dans un terminal : les sessions recentes apparaitront ici.</p>
+      </div>
+    </div>
+
+    <!-- ===== GIT ===== -->
+    <div class="body" id="tab-git" hidden>
+      <div class="git-top">
+        <div class="repo" id="repoName">Aucun depot</div>
+        <div class="git-actions">
+          <div class="branch-switch" id="branchSwitch" hidden>
+            <button class="branch-btn" id="branchBtn" aria-haspopup="true" aria-expanded="false">
+              <span class="cur-dot" id="curDot"></span><span id="curBranch">—</span><span class="car">&#9662;</span>
+            </button>
+            <div class="branch-menu" id="branchMenu" hidden role="menu">
+              <div class="mhead">Changer de branche — checkout</div>
+              <div id="branchItems"></div>
+            </div>
+          </div>
+          <button class="btn" id="pickRepoBtn">Choisir un depot…</button>
+        </div>
+      </div>
+
+      <div class="git-wrap" id="gitWrap" hidden>
+        <svg id="gitSvg" width="0" height="0" aria-hidden="true"></svg>
+        <div class="git-rows" id="gitRows"></div>
+      </div>
+
+      <div class="empty" id="gitEmpty">
+        <p>Choisis un depot Git pour voir le graphe.</p>
+        <p class="sub">Branches, merges et checkout en un clic.</p>
+      </div>
+
+      <div class="checkout-toast" id="checkoutToast" hidden><span class="ok">&#10003;</span> <span id="toastTxt"></span></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

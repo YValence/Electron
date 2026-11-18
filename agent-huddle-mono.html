@@ -1,0 +1,453 @@
+<title>Agent Huddle Mono</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout : style coss.com/ui — monochrome, cartes bordées fines, 1 seul bouton blanc, accents techniques */
+  :root {
+    --bg:        #09090b;
+    --surface:   #0e0e11;
+    --surface-2: #141418;
+    --surface-3: #1b1b20;
+    --line:      #242429;
+    --line-2:    #2f2f36;
+    --fg:        #f4f4f5;
+    --fg-2:      #a1a1aa;
+    --fg-3:      #71717a;
+    --fg-4:      #52525b;
+    --white:     #fafafa;
+    /* accents discrets, utilisés uniquement pour les statuts et le Git */
+    --run:   #5b9bff;   /* en cours */
+    --ask:   #f5b544;   /* attente / permission */
+    --done:  #3ecf8e;   /* terminé */
+    --merge: #a78bfa;   /* branche/merge */
+    --radius:    16px;
+    --disp: "Space Grotesk", system-ui, sans-serif;
+    --sans: "Inter", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f4f5; --surface: #ffffff; --surface-2: #fafafa; --surface-3: #f1f1f3;
+      --line: #e4e4e7; --line-2: #d4d4d8; --fg: #18181b; --fg-2: #52525b; --fg-3: #71717a; --fg-4: #a1a1aa;
+      --white: #18181b; color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f4f5; --surface: #ffffff; --surface-2: #fafafa; --surface-3: #f1f1f3;
+    --line: #e4e4e7; --line-2: #d4d4d8; --fg: #18181b; --fg-2: #52525b; --fg-3: #71717a; --fg-4: #a1a1aa;
+    --white: #18181b; color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--sans); color: var(--fg); background: var(--bg);
+    min-height: 100%;
+    padding: max(16px, env(safe-area-inset-left,0px)) max(16px, env(safe-area-inset-right,0px));
+    padding-block: 32px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-position: center;
+  }
+  body::before {  /* atténue la grille */
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background: radial-gradient(1000px 600px at 50% 0%, transparent, var(--bg) 70%);
+    pointer-events: none;
+  }
+
+  .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--fg-3); display: flex; align-items: center; gap: 9px;
+  }
+  .kicker .d { width: 6px; height: 6px; border-radius: 50%; background: var(--fg); animation: blip 2.4s infinite; }
+  @keyframes blip { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+  /* ---------- Fenêtre ---------- */
+  .window {
+    width: min(540px, 100%); background: var(--surface);
+    border: 1px solid var(--line-2); border-radius: var(--radius);
+    box-shadow: 0 1px 0 0 rgba(255,255,255,.04) inset, 0 40px 90px -30px rgba(0,0,0,.9);
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 11px; padding: 13px 16px;
+    border-bottom: 1px solid var(--line); cursor: grab; user-select: none;
+  }
+  .brand { font-family: var(--disp); font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+  .brand .ui { color: var(--fg-3); font-weight: 500; }
+  .count {
+    font-family: var(--mono); font-size: 11px; color: var(--fg-2);
+    border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 7px;
+  }
+  .spacer { flex: 1; }
+  .ic { width: 28px; height: 28px; display: grid; place-items: center; color: var(--fg-3);
+    border-radius: 8px; cursor: pointer; font-size: 13px; border: 1px solid transparent; }
+  .ic:hover { color: var(--fg); border-color: var(--line-2); background: var(--surface-2); }
+
+  /* onglets segmentés */
+  .tabs { display: flex; gap: 4px; padding: 10px 12px; }
+  .tab {
+    appearance: none; border: 1px solid transparent; background: transparent; color: var(--fg-3);
+    font: inherit; font-family: var(--sans); font-weight: 600; font-size: 13px; cursor: pointer;
+    padding: 7px 13px; border-radius: 9px; display: flex; align-items: center; gap: 8px;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); background: var(--surface-3); border-color: var(--line-2); }
+  .tab .n { font-family: var(--mono); font-size: 11px; color: var(--fg-4); }
+  .tab[aria-selected="true"] .n { color: var(--fg-2); }
+
+  .body { padding: 6px 12px 14px; min-height: 372px; }
+
+  /* ---------- Carte agent ---------- */
+  .agent {
+    display: grid; grid-template-columns: 34px 1fr auto; gap: 13px; align-items: start;
+    border: 1px solid var(--line); border-radius: 13px; padding: 14px; margin-bottom: 9px;
+    background: var(--surface); transition: border-color .15s;
+  }
+  .agent:hover { border-color: var(--line-2); }
+  .agent.attn { border-color: color-mix(in srgb, var(--ask) 45%, var(--line-2)); }
+
+  .mono-badge {
+    width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+    border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg-2);
+  }
+  .mono-badge .robot { width: 22px; height: 22px; display: block; }
+  .a-main { min-width: 0; padding-top: 1px; }
+  .a-name { font-family: var(--disp); font-weight: 600; font-size: 14.5px; letter-spacing: -.01em; }
+  .a-task { font-size: 12.5px; color: var(--fg-3); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .a-meta { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .steps { display: flex; gap: 3px; }
+  .steps i { width: 14px; height: 4px; border-radius: 2px; background: var(--line-2); }
+  .steps i.on { background: var(--fg); }
+  .phase { font-family: var(--mono); font-size: 11px; color: var(--fg-3); }
+
+  .a-side { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; white-space: nowrap; }
+  .status {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--fg-2);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .status .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.run   { color: var(--run); border-color: color-mix(in srgb, var(--run) 35%, var(--line-2)); }
+  .status.run .dot { animation: blip 1.8s infinite; }
+  .status.done  { color: var(--done); border-color: color-mix(in srgb, var(--done) 30%, var(--line-2)); }
+  .status.ask   { color: var(--ask); border-color: color-mix(in srgb, var(--ask) 40%, var(--line-2)); }
+  .time { font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+
+  /* bloc interactif */
+  .prompt { grid-column: 1 / -1; margin-top: 2px; border-top: 1px dashed var(--line-2); padding-top: 12px; }
+  .lbl {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--fg-3); border: 1px solid var(--line-2); border-radius: 5px; padding: 2px 7px; display: inline-block;
+  }
+  .q { font-family: var(--disp); font-weight: 600; font-size: 14px; margin: 10px 0 8px; }
+  .opt { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 9px;
+    border: 1px solid transparent; cursor: pointer; font-size: 13px; color: var(--fg-2); }
+  .opt:hover { background: var(--surface-2); color: var(--fg); }
+  .opt input { accent-color: var(--fg); }
+  .opt.pick { border-color: var(--line-2); background: var(--surface-2); color: var(--fg); }
+  .cmd { font-family: var(--mono); font-size: 12px; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px; margin: 10px 0; overflow-x: auto; }
+  .cmd .mut { color: var(--fg-4); }
+  .btns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .btn { font: inherit; font-family: var(--sans); font-weight: 600; font-size: 12.5px; border-radius: 9px;
+    padding: 8px 15px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg); cursor: pointer; }
+  .btn:hover { border-color: var(--fg-4); }
+  .btn.pri { background: var(--white); color: var(--bg); border-color: var(--white); }
+  .btn.pri:hover { opacity: .9; }
+
+  /* ---------- Git ---------- */
+  .git-head { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 2px 14px; }
+  .repo { font-family: var(--disp); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  /* sélecteur de branche */
+  .branch-switch { position: relative; }
+  .branch-btn { font: inherit; font-family: var(--mono); font-size: 11px; color: var(--fg); cursor: pointer;
+    border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 10px; background: var(--surface-2);
+    display: inline-flex; align-items: center; gap: 7px; }
+  .branch-btn:hover { border-color: var(--fg-4); }
+  .branch-btn .cur-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg); }
+  .branch-btn .car { color: var(--fg-3); font-size: 9px; }
+  .branch-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 212px;
+    background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; padding: 5px;
+    box-shadow: 0 20px 50px -18px rgba(0,0,0,.85); }
+  .branch-menu[hidden] { display: none; }
+  .branch-menu .mhead { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--fg-4); padding: 6px 9px 4px; }
+  .bitem { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+  .bitem:hover { background: var(--surface-2); color: var(--fg); }
+  .bitem .ln { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .bitem .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bitem .ck { color: var(--done); font-size: 12px; visibility: hidden; }
+  .bitem[aria-current="true"] { color: var(--fg); background: var(--surface-2); }
+  .bitem[aria-current="true"] .ck { visibility: visible; }
+  .bitem .ahead { font-size: 9.5px; color: var(--fg-4); }
+
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; }
+  .legend button { font: inherit; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-radius: 999px; padding: 2px 8px;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .legend button:hover { color: var(--fg); border-color: var(--line); }
+  .legend button[aria-current="true"] { color: var(--fg); border-color: var(--line-2); background: var(--surface-2); }
+  .legend i { width: 16px; height: 2px; display: inline-block; }
+
+  /* mise en avant de la lane active : les autres s'estompent */
+  .git-wrap svg .m, .git-wrap svg .g, .git-wrap svg .p { transition: opacity .2s; }
+  .git-wrap[data-branch="m"] svg .g, .git-wrap[data-branch="m"] svg .p,
+  .git-wrap[data-branch="g"] svg .m, .git-wrap[data-branch="g"] svg .p,
+  .git-wrap[data-branch="p"] svg .m, .git-wrap[data-branch="p"] svg .g { opacity: .28; }
+  .checkout-toast { font-family: var(--mono); font-size: 11px; color: var(--fg-2); margin: 10px 2px 0;
+    border: 1px dashed var(--line-2); border-radius: 8px; padding: 7px 10px; display: flex; align-items: center; gap: 8px; }
+  .checkout-toast[hidden] { display: none; }
+  .checkout-toast .ok { color: var(--done); }
+
+  .git-wrap { display: grid; grid-template-columns: 130px 1fr; }
+  .commit-row { display: grid; grid-template-columns: 130px 1fr; align-items: center; border-radius: 9px; padding: 2px 8px; }
+  .commit-row:hover { background: var(--surface-2); }
+  .commit-msg { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 8px; }
+  .commit-sub { font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); display: flex; gap: 10px; margin-top: 2px; }
+  .commit-sub .sha { color: var(--fg-3); }
+  .chip { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--merge);
+    border: 1px solid color-mix(in srgb, var(--merge) 35%, var(--line-2)); border-radius: 999px; padding: 1px 7px; text-transform: uppercase; }
+  .chip.tag { color: var(--done); border-color: color-mix(in srgb, var(--done) 35%, var(--line-2)); }
+
+  .hint { font-family: var(--mono); font-size: 11.5px; color: var(--fg-4); max-width: 520px; text-align: center; line-height: 1.6; }
+  .hint b { color: var(--fg-2); font-weight: 500; }
+
+  @media (max-width: 440px) {
+    .agent { grid-template-columns: 30px 1fr; }
+    .a-side { grid-column: 2; flex-direction: row; align-items: center; }
+    .git-wrap, .commit-row { grid-template-columns: 78px 1fr; }
+  }
+</style>
+
+<p class="kicker"><span class="d"></span> coss / ui style — alt</p>
+
+<div class="window" role="group" aria-label="Agent Huddle Mono">
+  <div class="titlebar">
+    <span class="brand">Agent Huddle <span class="ui">ui</span></span>
+    <span class="count" id="count">04 active</span>
+    <span class="spacer"></span>
+    <span class="ic" title="Épingler">▣</span>
+    <span class="ic" title="Réduire">–</span>
+    <span class="ic" title="Fermer">✕</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="agents">Agents <span class="n">04</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="git">Git <span class="n">12</span></button>
+  </div>
+
+  <!-- ===== AGENTS ===== -->
+  <div class="body" id="tab-agents">
+
+    <div class="agent">
+      <div class="mono-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="robot"><line x1="12" y1="2.5" x2="12" y2="5"/><circle cx="12" cy="2.2" r="1" fill="currentColor" stroke="none"/><rect x="5" y="5" width="14" height="12" rx="2.6"/><path d="M5 9 H3 V13 H5"/><path d="M19 9 H21 V13 H19"/><circle cx="9.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="11" r="1.2" fill="currentColor" stroke="none"/><line x1="9.5" y1="14.3" x2="14.5" y2="14.3"/></svg></div>
+      <div class="a-main">
+        <div class="a-name">Polish · Watch Videos</div>
+        <div class="a-task">Rendering animations — 03-huddle.mp4</div>
+        <div class="a-meta">
+          <span class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>
+          <span class="phase">5/7 animations</span>
+        </div>
+      </div>
+      <div class="a-side"><span class="status run"><span class="dot"></span>En cours</span><span class="time">02:14</span></div>
+    </div>
+
+    <div class="agent attn">
+      <div class="mono-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="robot"><circle cx="7" cy="3" r="1" fill="currentColor" stroke="none"/><line x1="7.4" y1="3.7" x2="9" y2="6"/><circle cx="17" cy="3" r="1" fill="currentColor" stroke="none"/><line x1="16.6" y1="3.7" x2="15" y2="6"/><rect x="5" y="6" width="14" height="12" rx="6"/><rect x="8.4" y="10" width="2.3" height="2.3" rx=".6" fill="currentColor" stroke="none"/><rect x="13.3" y="10" width="2.3" height="2.3" rx=".6" fill="currentColor" stroke="none"/></svg></div>
+      <div class="a-main">
+        <div class="a-name">Breakdown reel</div>
+        <div class="a-task">Pose une question</div>
+        <div class="a-meta">
+          <span class="steps"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>
+          <span class="phase">2/5 watching</span>
+        </div>
+      </div>
+      <div class="a-side"><span class="status ask"><span class="dot"></span>Input</span><span class="time">attente</span></div>
+      <div class="prompt">
+        <span class="lbl">Hook</span>
+        <div class="q">Quel hook utiliser ?</div>
+        <label class="opt"><input type="radio" name="hook"> Celui qui parle de la douleur</label>
+        <label class="opt pick"><input type="radio" name="hook" checked> Celui avec le chiffre</label>
+        <label class="opt"><input type="radio" name="hook"> Celui qui pose une question</label>
+        <div class="btns"><button class="btn pri">Envoyer</button><button class="btn">VS Code</button></div>
+      </div>
+    </div>
+
+    <div class="agent attn">
+      <div class="mono-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="robot"><line x1="8" y1="3" x2="9.6" y2="6"/><line x1="16" y1="3" x2="14.4" y2="6"/><rect x="4" y="6" width="16" height="11" rx="2"/><circle cx="9" cy="11" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1.5" fill="currentColor" stroke="none"/><path d="M7 14.4 H17"/><line x1="10" y1="14.4" x2="10" y2="16"/><line x1="14" y1="14.4" x2="14" y2="16"/></svg></div>
+      <div class="a-main">
+        <div class="a-name">Idea Scout</div>
+        <div class="a-task">Demande une permission</div>
+        <div class="a-meta">
+          <span class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span>
+          <span class="phase">4/6 scoring</span>
+        </div>
+      </div>
+      <div class="a-side"><span class="status ask"><span class="dot"></span>Perm</span><span class="time">bloqué</span></div>
+      <div class="prompt">
+        <span class="lbl">Permission — bash</span>
+        <div class="cmd">npx hyperframes render <span class="mut">.</span> -o out.mp4</div>
+        <div class="btns"><button class="btn pri">Autoriser</button><button class="btn">Refuser</button><button class="btn">VS Code</button></div>
+      </div>
+    </div>
+
+    <div class="agent">
+      <div class="mono-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="robot"><rect x="6" y="5" width="12" height="11" rx="3"/><path d="M6 8.5 H3"/><path d="M18 8.5 H21"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="10" r="1" fill="currentColor" stroke="none"/><path d="M9.6 12.4 Q12 14.3 14.4 12.4"/><path d="M7 16 Q12 19 17 16"/></svg></div>
+      <div class="a-main">
+        <div class="a-name">Cheat sheet · Tokens</div>
+        <div class="a-task">Brouillon écrit — prêt à relire</div>
+        <div class="a-meta">
+          <span class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          <span class="phase">5/5 drafting</span>
+        </div>
+      </div>
+      <div class="a-side"><span class="status done"><span class="dot"></span>Terminé</span><span class="time">1 min</span></div>
+    </div>
+
+  </div>
+
+  <!-- ===== GIT ===== -->
+  <div class="body" id="tab-git" hidden>
+    <div class="git-head">
+      <div class="repo">agent-huddle</div>
+      <div class="branch-switch">
+        <button class="branch-btn" id="branchBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="cur-dot" id="curDot"></span><span id="curBranch">master</span><span class="car">▾</span>
+        </button>
+        <div class="branch-menu" id="branchMenu" hidden role="menu">
+          <div class="mhead">Changer de branche — checkout</div>
+          <div class="bitem" role="menuitem" data-branch="m" data-name="master" aria-current="true">
+            <span class="ln" style="background:var(--fg)"></span><span class="nm">master</span><span class="ck">✓</span>
+          </div>
+          <div class="bitem" role="menuitem" data-branch="g" data-name="feature/git-graph">
+            <span class="ln" style="background:var(--run)"></span><span class="nm">feature/git-graph</span><span class="ahead">+3</span><span class="ck">✓</span>
+          </div>
+          <div class="bitem" role="menuitem" data-branch="p" data-name="feature/live-watch">
+            <span class="ln" style="background:var(--merge)"></span><span class="nm">feature/live-watch</span><span class="ahead">+2</span><span class="ck">✓</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend" style="margin:0 2px 12px">
+      <button data-branch="m" aria-current="true"><i style="background:var(--fg)"></i>master</button>
+      <button data-branch="g"><i style="background:var(--run)"></i>feature/git-graph</button>
+      <button data-branch="p"><i style="background:var(--merge)"></i>feature/live-watch</button>
+    </div>
+
+    <div class="git-wrap" id="gitWrap" data-branch="m">
+      <svg viewBox="0 0 130 452" width="130" height="452" aria-hidden="true">
+        <style>
+          .m { stroke: var(--fg); }
+          .g { stroke: var(--run); }
+          .p { stroke: var(--merge); }
+          path { fill: none; stroke-width: 2; }
+          circle { stroke-width: 2; }
+          .fill-s { fill: var(--surface); }
+        </style>
+        <path class="m" d="M22,20 L22,432"/>
+        <path class="p" d="M22,372 C22,344 62,352 62,322 L62,168 C62,142 22,150 22,124"/>
+        <path class="g" d="M22,312 C22,286 102,294 102,264 L102,116 C102,92 22,100 22,64"/>
+
+        <circle class="m fill-s" cx="22" cy="20"  r="5.5"/>
+        <circle class="g fill-s" cx="22" cy="64"  r="5.5"/>
+        <circle class="m fill-s" cx="22" cy="104" r="5.5"/>
+        <circle class="m fill-s" cx="22" cy="124" r="5.5"/>
+        <circle class="g fill-s" cx="102" cy="174" r="5.5"/>
+        <circle class="p fill-s" cx="62" cy="214" r="5.5"/>
+        <circle class="g fill-s" cx="102" cy="254" r="5.5"/>
+        <circle class="p fill-s" cx="62" cy="294" r="5.5"/>
+        <circle class="m fill-s" cx="22" cy="312" r="5.5"/>
+        <circle class="p fill-s" cx="62" cy="352" r="5.5"/>
+        <circle class="m fill-s" cx="22" cy="372" r="5.5"/>
+        <circle class="m fill-s" cx="22" cy="432" r="4.5"/>
+      </svg>
+
+      <div class="git-rows">
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">Merge PR — live watch des sessions <span class="chip">#14</span></div><div class="commit-sub"><span class="sha">a1f9c20</span><span>YValence</span><span>now</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">feat: lecture .jsonl en temps réel</div><div class="commit-sub"><span class="sha">7b3e0aa</span><span>12m</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">chore: release <span class="chip tag">v0.2.0</span></div><div class="commit-sub"><span class="sha">c04d118</span><span>1h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">Merge PR — graphe Git <span class="chip">#12</span></div><div class="commit-sub"><span class="sha">e51aa7d</span><span>2h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">fix: courbes de merge alignées</div><div class="commit-sub"><span class="sha">9d2c441</span><span>3h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">feat: rendu SVG des branches</div><div class="commit-sub"><span class="sha">2aa7f90</span><span>4h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">wip: liste des commits par lane</div><div class="commit-sub"><span class="sha">b8810ce</span><span>5h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">feat: onglet Git dans le popup</div><div class="commit-sub"><span class="sha">31f0a2b</span><span>hier</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">feat: fenêtre always-on-top</div><div class="commit-sub"><span class="sha">5c9ee10</span><span>hier</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">feat: cartes agents + progression</div><div class="commit-sub"><span class="sha">0ab34f1</span><span>2j</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div><div class="commit-msg">chore: setup Electron + Vite</div><div class="commit-sub"><span class="sha">d108651</span><span>2j</span></div></div></div>
+        <div class="commit-row" style="height:20px"><div></div><div><div class="commit-sub"><span class="sha">ea2da60</span><span>Initial commit</span></div></div></div>
+      </div>
+    </div>
+    <div class="checkout-toast" id="checkoutToast" hidden><span class="ok">✓</span> <span id="toastTxt"></span></div>
+  </div>
+</div>
+
+<p class="hint">Style <b>monochrome</b> inspiré de coss.com/ui · données fictives.<br>Compare avec la 1ʳᵉ version, puis on branche le vrai suivi des sessions Claude.</p>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = { agents: document.getElementById('tab-agents'), git: document.getElementById('tab-git') };
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', x === t));
+    for (const k in panels) panels[k].hidden = (k !== t.dataset.tab);
+  }));
+  document.querySelectorAll('.opt').forEach(o => o.addEventListener('click', () => {
+    o.parentElement.querySelectorAll('.opt').forEach(x => x.classList.remove('pick'));
+    o.classList.add('pick');
+  }));
+
+  // ---- Checkout de branche (interactif) ----
+  const wrap     = document.getElementById('gitWrap');
+  const btn      = document.getElementById('branchBtn');
+  const menu     = document.getElementById('branchMenu');
+  const curLabel = document.getElementById('curBranch');
+  const curDot   = document.getElementById('curDot');
+  const toast    = document.getElementById('checkoutToast');
+  const toastTxt = document.getElementById('toastTxt');
+  const laneColor = { m: 'var(--fg)', g: 'var(--run)', p: 'var(--merge)' };
+  let toastTimer;
+
+  function openMenu(open) {
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btn.addEventListener('click', e => { e.stopPropagation(); openMenu(menu.hidden); });
+  document.addEventListener('click', () => openMenu(false));
+  menu.addEventListener('click', e => e.stopPropagation());
+
+  function checkout(branch, name) {
+    if (wrap.dataset.branch === branch) { openMenu(false); return; }
+    wrap.dataset.branch = branch;                 // met en avant la lane active
+    curLabel.textContent = name;
+    curDot.style.background = laneColor[branch];
+    // coche dans le menu
+    menu.querySelectorAll('.bitem').forEach(i =>
+      i.setAttribute('aria-current', i.dataset.branch === branch));
+    // état des boutons de la légende
+    document.querySelectorAll('.legend button').forEach(b =>
+      b.setAttribute('aria-current', b.dataset.branch === branch));
+    // toast "checkout"
+    toastTxt.textContent = 'Basculé sur  ' + name;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, 2600);
+    openMenu(false);
+  }
+
+  menu.querySelectorAll('.bitem').forEach(i =>
+    i.addEventListener('click', () => checkout(i.dataset.branch, i.dataset.name)));
+  document.querySelectorAll('.legend button').forEach(b =>
+    b.addEventListener('click', () => {
+      const name = b.textContent.trim();
+      checkout(b.dataset.branch, name);
+    }));
+</script>

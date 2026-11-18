@@ -1,0 +1,424 @@
+<title>Agent Huddle</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: un faux bureau sombre avec un widget flottant centré, deux onglets (Agents / Git) */
+  :root {
+    --desk:        #0b0d12;
+    --desk-glow:   #12161f;
+    --panel:       #16191f;
+    --panel-2:     #1d2129;
+    --panel-3:     #262b34;
+    --line:        #2d323c;
+    --fg:          #e8ebf0;
+    --fg-dim:      #9aa3b2;
+    --fg-faint:    #6b7280;
+    --accent:      #c3f53c;   /* vert acide, comme la maquette TikTok */
+    --accent-ink:  #0b0d12;
+    --blue:        #4f8cff;
+    --pink:        #ff6b9d;
+    --orange:      #ff9f45;
+    --violet:      #a78bfa;
+    --ok:          #39d98a;
+    --warn:        #ffb020;
+    --radius:      14px;
+    --font:        "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:        "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --desk: #e9ecf2; --desk-glow: #dfe3ec; }
+  }
+  :root[data-theme="light"] { --desk: #e9ecf2; --desk-glow: #dfe3ec; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--fg);
+    background:
+      radial-gradient(1100px 650px at 72% -10%, var(--desk-glow), transparent 60%),
+      radial-gradient(900px 500px at 10% 110%, #141a24, transparent 55%),
+      var(--desk);
+    min-height: 100%;
+    padding: max(16px, env(safe-area-inset-left,0px)) max(16px, env(safe-area-inset-right,0px));
+    padding-block: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .tag {
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--fg-faint); display: flex; align-items: center; gap: 8px;
+  }
+  .tag b { color: var(--accent); font-weight: 600; letter-spacing: .12em; }
+
+  /* ---------- Fenêtre flottante ---------- */
+  .window {
+    width: min(560px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 30px 70px -20px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.02) inset;
+    overflow: hidden;
+  }
+
+  /* barre de titre draggable (faux) */
+  .titlebar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border-bottom: 1px solid var(--line);
+    cursor: grab;
+    user-select: none;
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dots { display: flex; gap: 7px; margin-right: 4px; }
+  .live {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(195,245,60,.6); animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(195,245,60,0); } 100% { box-shadow: 0 0 0 0 rgba(195,245,60,0); } }
+  .win-title { font-weight: 700; font-size: 14px; letter-spacing: .01em; }
+  .win-count {
+    font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent);
+    border-radius: 999px; padding: 1px 7px;
+  }
+  .titlebar .spacer { flex: 1; }
+  .ic {
+    width: 26px; height: 26px; display: grid; place-items: center;
+    color: var(--fg-dim); border-radius: 7px; cursor: pointer; font-size: 14px;
+  }
+  .ic:hover { background: var(--panel-3); color: var(--fg); }
+
+  /* onglets */
+  .tabs { display: flex; gap: 2px; padding: 8px 10px 0; background: var(--panel); }
+  .tab {
+    appearance: none; border: 0; background: transparent; color: var(--fg-dim);
+    font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    padding: 9px 14px; border-radius: 9px 9px 0 0; display: flex; align-items: center; gap: 7px;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); background: var(--panel-2); }
+  .tab .badge {
+    font-size: 10px; background: var(--panel-3); color: var(--fg-dim);
+    border-radius: 999px; padding: 1px 6px; font-weight: 700;
+  }
+  .tab[aria-selected="true"] .badge { background: var(--accent); color: var(--accent-ink); }
+
+  .panel-body { background: var(--panel-2); padding: 12px; min-height: 360px; }
+
+  /* ---------- Carte agent ---------- */
+  .agent {
+    display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; margin-bottom: 10px; position: relative;
+  }
+  .agent.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+    font-size: 20px; color: #0b0d12; position: relative;
+  }
+  .avatar::after { content: ""; position: absolute; left: 9px; right: 9px; bottom: -3px; height: 4px;
+    background: rgba(0,0,0,.35); border-radius: 50%; filter: blur(2px); }
+  .a-blue   { background: var(--blue); }
+  .a-pink   { background: var(--pink); }
+  .a-orange { background: var(--orange); }
+  .a-violet { background: var(--violet); }
+
+  .a-main { min-width: 0; }
+  .a-name { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .a-task { font-size: 12.5px; color: var(--fg-dim); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .a-meta { margin-top: 7px; display: flex; align-items: center; gap: 8px; }
+  .a-step { font-size: 11px; font-weight: 700; color: var(--accent); }
+  .a-phase { font-size: 11px; color: var(--fg-dim); }
+
+  .bar { height: 5px; border-radius: 99px; background: var(--panel-3); margin-top: 8px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+
+  .a-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .status {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .st-run  { color: var(--accent); background: rgba(195,245,60,.12); }
+  .st-run::before { animation: pulse 2s infinite; }
+  .st-done { color: var(--ok); background: rgba(57,217,138,.12); }
+  .st-ask  { color: var(--warn); background: rgba(255,176,32,.14); }
+  .a-icons { display: flex; gap: 2px; }
+
+  /* bloc interactif (question / permission) */
+  .prompt {
+    grid-column: 1 / -1; margin-top: 4px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 11px;
+  }
+  .prompt .lbl {
+    font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent-ink); background: var(--accent); border-radius: 5px; padding: 2px 6px; display: inline-block;
+  }
+  .prompt .lbl.perm { background: var(--warn); }
+  .prompt .q { font-weight: 700; margin: 8px 0 6px; font-size: 13.5px; }
+  .opt { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .opt:hover { background: var(--panel-3); }
+  .opt input { accent-color: var(--accent); }
+  .cmd { font-family: var(--mono); font-size: 12px; color: var(--fg); background: #0d0f14;
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; margin: 8px 0; overflow-x: auto; }
+  .cmd .flag { color: var(--accent); }
+  .btns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .btn { font: inherit; font-weight: 700; font-size: 12.5px; border-radius: 8px; padding: 7px 13px;
+    border: 1px solid var(--line); background: var(--panel-3); color: var(--fg); cursor: pointer; }
+  .btn:hover { border-color: var(--fg-faint); }
+  .btn.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger:hover { border-color: #ff6b6b; color: #ff8585; }
+
+  /* ---------- Onglet Git ---------- */
+  .git-wrap { display: grid; grid-template-columns: 148px 1fr; gap: 0; }
+  .git-lanes { padding: 4px 0; }
+  .git-rows { min-width: 0; }
+  .git-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .repo { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  .repo .branch-pill { font-family: var(--mono); font-size: 11px; color: var(--accent);
+    background: rgba(195,245,60,.1); border: 1px solid rgba(195,245,60,.25); border-radius: 999px; padding: 1px 8px; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 2px; }
+  .legend span { font-size: 11px; color: var(--fg-dim); display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .commit-row { display: grid; grid-template-columns: 150px 1fr; align-items: center;
+    border-radius: 8px; padding: 2px 6px; }
+  .commit-row:hover { background: var(--panel); }
+  .commit-info { min-width: 0; }
+  .commit-msg { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .commit-sub { font-size: 11px; color: var(--fg-faint); display: flex; gap: 8px; margin-top: 1px; }
+  .commit-sub .sha { font-family: var(--mono); color: var(--fg-dim); }
+  .commit-sub .tag-chip { font-family: var(--mono); color: var(--orange); background: rgba(255,159,69,.12);
+    border-radius: 4px; padding: 0 5px; }
+  .pr-chip { font-size: 10px; font-weight: 800; color: var(--blue); background: rgba(79,140,255,.12);
+    border: 1px solid rgba(79,140,255,.3); border-radius: 999px; padding: 1px 7px; }
+
+  .hint { font-size: 12px; color: var(--fg-faint); max-width: 560px; text-align: center; line-height: 1.5; }
+  .hint code { font-family: var(--mono); color: var(--accent); }
+
+  @media (max-width: 440px) {
+    .agent { grid-template-columns: 36px 1fr; }
+    .a-side { grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; }
+    .git-wrap { grid-template-columns: 90px 1fr; }
+  }
+</style>
+
+<p class="tag"><span class="live"></span> Maquette interactive · <b>prototype</b></p>
+
+<div class="window" role="group" aria-label="Agent Huddle">
+  <div class="titlebar">
+    <span class="live" title="Live"></span>
+    <span class="win-title">Agent Huddle</span>
+    <span class="win-count" id="activeCount">4</span>
+    <span class="spacer"></span>
+    <span class="ic" title="Épingler par-dessus">▣</span>
+    <span class="ic" title="Réduire">–</span>
+    <span class="ic" title="Fermer">✕</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="agents">
+      🤖 Agents <span class="badge">4</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="git">
+      ⎇ Git <span class="badge">12</span>
+    </button>
+  </div>
+
+  <!-- ===== ONGLET AGENTS ===== -->
+  <div class="panel-body" id="tab-agents">
+
+    <!-- Agent 1 : en cours -->
+    <div class="agent">
+      <div class="avatar a-blue">■■</div>
+      <div class="a-main">
+        <div class="a-name">Polish · Watch Videos</div>
+        <div class="a-task">Rendering animations — 03-huddle.mp4</div>
+        <div class="a-meta"><span class="a-step">5/7</span><span class="a-phase">Animations</span></div>
+        <div class="bar"><span style="width:71%"></span></div>
+      </div>
+      <div class="a-side">
+        <span class="status st-run">En cours</span>
+        <span class="a-phase">2 min 14 s</span>
+      </div>
+    </div>
+
+    <!-- Agent 2 : pose une question -->
+    <div class="agent sel">
+      <div class="avatar a-pink">■■</div>
+      <div class="a-main">
+        <div class="a-name">Breakdown reel</div>
+        <div class="a-task">Pose une question</div>
+        <div class="a-meta"><span class="a-step">2/5</span><span class="a-phase">Watching</span></div>
+        <div class="bar"><span style="width:40%"></span></div>
+      </div>
+      <div class="a-side">
+        <span class="status st-ask">Réponse ?</span>
+        <span class="a-phase">en attente</span>
+      </div>
+      <div class="prompt">
+        <span class="lbl">Hook</span>
+        <div class="q">Quel hook utiliser ?</div>
+        <label class="opt"><input type="radio" name="hook"> Celui qui parle de la douleur</label>
+        <label class="opt"><input type="radio" name="hook" checked> Celui avec le chiffre</label>
+        <label class="opt"><input type="radio" name="hook"> Celui qui pose une question</label>
+        <div class="btns">
+          <button class="btn pri">Envoyer</button>
+          <button class="btn">Ouvrir dans VS Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent 3 : demande permission -->
+    <div class="agent">
+      <div class="avatar a-orange">■■</div>
+      <div class="a-main">
+        <div class="a-name">Idea Scout</div>
+        <div class="a-task">Demande une permission</div>
+        <div class="a-meta"><span class="a-step">4/6</span><span class="a-phase">Scoring</span></div>
+        <div class="bar"><span style="width:66%"></span></div>
+      </div>
+      <div class="a-side">
+        <span class="status st-ask">Permission</span>
+        <span class="a-phase">bloqué</span>
+      </div>
+      <div class="prompt">
+        <span class="lbl perm">Permission</span>
+        <div class="cmd">$ npx hyperframes render<span class="flag"> .</span> <span class="flag">-o</span> out.mp4</div>
+        <div class="btns">
+          <button class="btn pri">Autoriser</button>
+          <button class="btn danger">Refuser</button>
+          <button class="btn">Dans VS Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent 4 : terminé -->
+    <div class="agent">
+      <div class="avatar a-violet">■■</div>
+      <div class="a-main">
+        <div class="a-name">Cheat sheet · Tokens</div>
+        <div class="a-task">Brouillon écrit — prêt à relire</div>
+        <div class="a-meta"><span class="a-step">5/5</span><span class="a-phase">Drafting</span></div>
+        <div class="bar"><span style="width:100%"></span></div>
+      </div>
+      <div class="a-side">
+        <span class="status st-done">Terminé</span>
+        <span class="a-phase">il y a 1 min</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== ONGLET GIT ===== -->
+  <div class="panel-body" id="tab-git" hidden>
+    <div class="git-head">
+      <div>
+        <div class="repo">⎇ agent-huddle <span class="branch-pill">master</span></div>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>master</span>
+          <span><i style="background:var(--blue)"></i>feature/git-graph</span>
+          <span><i style="background:var(--pink)"></i>feature/live-watch</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="git-wrap">
+      <!-- colonne graphe SVG -->
+      <svg class="git-lanes" viewBox="0 0 148 440" width="148" height="440" aria-hidden="true">
+        <defs>
+          <style>
+            .m { stroke: var(--accent); }
+            .b { stroke: var(--blue); }
+            .p { stroke: var(--pink); }
+            path { fill: none; stroke-width: 2.5; }
+            circle { stroke-width: 2.5; }
+          </style>
+        </defs>
+        <!-- lignes verticales (lanes) : x=24 master, x=64 bleu, x=104 rose -->
+        <!-- master -->
+        <path class="m" d="M24,20 L24,420"/>
+        <!-- lane bleu : branch de master à y=360, merge à y=120 -->
+        <path class="b" d="M24,360 C24,330 64,340 64,310 L64,160 C64,135 24,145 24,120"/>
+        <!-- lane rose : branch à y=300, merge à y=60 -->
+        <path class="p" d="M24,300 C24,275 104,285 104,255 L104,110 C104,85 24,95 24,60"/>
+
+        <!-- nœuds (de haut = récent, en bas = ancien) -->
+        <circle class="m" cx="24" cy="20"  r="6" fill="var(--panel-2)"/>
+        <circle class="p" cx="24" cy="60"  r="6" fill="var(--panel-2)"/>
+        <circle class="m" cx="24" cy="100" r="6" fill="var(--panel-2)"/>
+        <circle class="m" cx="24" cy="120" r="6" fill="var(--panel-2)"/>
+        <circle class="p" cx="104" cy="170" r="6" fill="var(--panel-2)"/>
+        <circle class="b" cx="64" cy="210" r="6" fill="var(--panel-2)"/>
+        <circle class="p" cx="104" cy="250" r="6" fill="var(--panel-2)"/>
+        <circle class="b" cx="64" cy="290" r="6" fill="var(--panel-2)"/>
+        <circle class="m" cx="24" cy="300" r="6" fill="var(--panel-2)"/>
+        <circle class="b" cx="64" cy="340" r="6" fill="var(--panel-2)"/>
+        <circle class="m" cx="24" cy="360" r="6" fill="var(--panel-2)"/>
+        <circle class="m" cx="24" cy="420" r="5" fill="var(--panel-2)"/>
+      </svg>
+
+      <!-- colonne commits -->
+      <div class="git-rows">
+        <div class="commit-row" style="height:40px">
+          <div></div>
+          <div class="commit-info">
+            <div class="commit-msg">Merge PR #14 — live watch des sessions <span class="pr-chip">#14 merged</span></div>
+            <div class="commit-sub"><span class="sha">a1f9c20</span><span>YValence</span><span>à l'instant</span></div>
+          </div>
+        </div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">feat: lecture des fichiers .jsonl en temps réel</div>
+          <div class="commit-sub"><span class="sha">7b3e0aa</span><span>YValence</span><span>12 min</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">chore: release <span class="commit-sub" style="display:inline"></span><span class="tag-chip">v0.2.0</span></div>
+          <div class="commit-sub"><span class="sha">c04d118</span><span>YValence</span><span>1 h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">Merge PR #12 — graphe Git type GitKraken <span class="pr-chip">#12 merged</span></div>
+          <div class="commit-sub"><span class="sha">e51aa7d</span><span>YValence</span><span>2 h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">fix: courbes de merge alignées sur les lanes</div>
+          <div class="commit-sub"><span class="sha">9d2c441</span><span>YValence</span><span>3 h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">feat: rendu SVG des branches et noeuds</div>
+          <div class="commit-sub"><span class="sha">2aa7f90</span><span>YValence</span><span>4 h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">wip: liste des commits par lane</div>
+          <div class="commit-sub"><span class="sha">b8810ce</span><span>YValence</span><span>5 h</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">feat: onglet Git dans le popup</div>
+          <div class="commit-sub"><span class="sha">31f0a2b</span><span>YValence</span><span>hier</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">feat: fenêtre flottante always-on-top</div>
+          <div class="commit-sub"><span class="sha">5c9ee10</span><span>YValence</span><span>hier</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">feat: cartes agents + barres de progression</div>
+          <div class="commit-sub"><span class="sha">0ab34f1</span><span>YValence</span><span>2 j</span></div></div></div>
+        <div class="commit-row" style="height:40px"><div></div><div class="commit-info">
+          <div class="commit-msg">chore: setup Electron + Vite</div>
+          <div class="commit-sub"><span class="sha">d1086517</span><span>YValence</span><span>2 j</span></div></div></div>
+        <div class="commit-row" style="height:20px"><div></div><div class="commit-info">
+          <div class="commit-sub"><span class="sha">ea2da60</span><span>Initial commit</span></div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="hint">
+  Clique sur les onglets <code>Agents</code> et <code>Git</code>. Données fictives pour valider le look —
+  ensuite on branche les vraies sessions Claude (fichiers <code>.jsonl</code>) et ton vrai repo Git.
+</p>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = { agents: document.getElementById('tab-agents'), git: document.getElementById('tab-git') };
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', x === t));
+    for (const k in panels) panels[k].hidden = (k !== t.dataset.tab);
+  }));
+</script>
