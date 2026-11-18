@@ -18,11 +18,14 @@ const ROBOTS = [
   // 6 — sourire, bras latéraux
   RB(`<rect x="6" y="5" width="12" height="11" rx="3"/><path d="M6 8.5 H3"/><path d="M18 8.5 H21"/>${D(10,10,1)}${D(14,10,1)}<path d="M9.6 12.4 Q12 14.3 14.4 12.4"/><path d="M7 16 Q12 19 17 16"/>`)
 ];
-function robotIcon(seed) {
+const ROBOT_COLORS = ['#5b9bff', '#a78bfa', '#f5b544', '#3ecf8e', '#ff6b9d', '#22d3ee'];
+function hashOf(seed) {
   let h = 0; const s = String(seed);
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return ROBOTS[h % ROBOTS.length];
+  return h;
 }
+function robotIcon(seed) { return ROBOTS[hashOf(seed) % ROBOTS.length]; }
+function robotColor(seed) { return ROBOT_COLORS[hashOf(seed) % ROBOT_COLORS.length]; }
 
 /* ============ Controles fenetre ============ */
 $('minBtn').addEventListener('click', () => window.api.minimize());
@@ -38,6 +41,7 @@ const panels = { agents: $('tab-agents'), git: $('tab-git') };
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t));
   for (const k in panels) panels[k].hidden = (k !== t.dataset.tab);
+  fitWindow();
 }));
 
 /* ============ Sessions Claude ============ */
@@ -50,28 +54,143 @@ function relTime(ms) {
 }
 const STATUS_LABEL = { running: 'En cours', done: 'Termine', idle: 'En pause' };
 const STATUS_CLASS = { running: 'run', done: 'done', idle: 'idle' };
+const ST_CLASS = { completed: 'done', in_progress: 'doing', pending: 'todo' };
+
+const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>';
+
+const cardCache = new Map();   // id -> element (rendu incremental, pas de rebuild complet)
+let openId = null;             // accordeon : un seul agent ouvert a la fois
+
+// Redimensionne la fenetre a la hauteur du contenu affiche.
+function fitWindow() {
+  requestAnimationFrame(() => {
+    const titlebar = document.querySelector('.titlebar');
+    const tabs = document.querySelector('.tabs');
+    const body = [...document.querySelectorAll('.body')].find(b => !b.hidden);
+    let h = titlebar.offsetHeight + tabs.offsetHeight + 2;
+    if (body) {
+      const cs = getComputedStyle(body);
+      h += parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      for (const ch of body.children) {
+        if (ch.hidden) continue;
+        const m = getComputedStyle(ch);
+        h += ch.offsetHeight + parseFloat(m.marginTop) + parseFloat(m.marginBottom);
+      }
+    }
+    window.api.autosize(h);
+  });
+}
+
+function applyOpenStates() {
+  for (const [id, el] of cardCache) {
+    const open = id === openId;
+    el.classList.toggle('open', open);
+    el.querySelector('.subtasks').hidden = !open;
+  }
+}
+
+function createCard(a) {
+  const el = document.createElement('div');
+  el.className = 'agent enter';
+  el.dataset.id = a.id;
+  el.innerHTML =
+    `<div class="agent-head">
+       <div class="mono-badge">${robotIcon(a.project)}</div>
+       <div class="a-main">
+         <div class="a-name"></div>
+         <div class="a-task"></div>
+         <div class="a-meta"><span class="phase"></span><span class="sep"> · </span><span class="subcount"></span></div>
+         <div class="progress" hidden><div class="ptrack"><span></span></div><span class="pfrac"></span></div>
+       </div>
+       <div class="a-side">
+         <span class="status"><span class="dot"></span><span class="st-label"></span></span>
+         <span class="time"></span>
+       </div>
+       <button class="expand" title="Derouler">${CHEVRON}</button>
+     </div>
+     <div class="subtasks" hidden></div>`;
+  el.querySelector('.agent-head').addEventListener('click', () => {
+    openId = (openId === a.id) ? null : a.id;   // accordeon
+    applyOpenStates();
+    fitWindow();
+  });
+  el.addEventListener('animationend', () => el.classList.remove('enter'), { once: true });
+  return el;
+}
+
+function updateCard(el, a) {
+  el.classList.toggle('working', a.status === 'running');  // contour jaune + robot anime
+  el.querySelector('.mono-badge').style.color = robotColor(a.project);
+  el.querySelector('.a-name').textContent = a.project;
+  el.querySelector('.a-task').textContent = a.last || '…';
+  el.querySelector('.phase').textContent = a.turns + ' messages';
+
+  const n = a.todos.length;
+  const doneN = a.todos.filter(t => t.status === 'completed').length;
+  el.querySelector('.sep').hidden = !n;
+  el.querySelector('.subcount').textContent = n ? `${n} sous-tache${n > 1 ? 's' : ''}` : '';
+
+  const prog = el.querySelector('.progress');
+  prog.hidden = !n;
+  if (n) {
+    const pct = Math.round((doneN / n) * 100);
+    const span = prog.querySelector('.ptrack > span');
+    span.style.width = pct + '%';
+    span.classList.toggle('full', pct === 100);
+    prog.querySelector('.pfrac').textContent = `${doneN}/${n}`;
+  }
+
+  const st = el.querySelector('.status');
+  st.className = 'status ' + STATUS_CLASS[a.status];
+  st.querySelector('.st-label').textContent = STATUS_LABEL[a.status];
+  el.querySelector('.time').textContent = relTime(a.ageMs);
+
+  const sub = el.querySelector('.subtasks');
+  const sig = a.todos.map(t => t.status + ':' + t.content).join('|');
+  if (sub._sig !== sig) {
+    sub._sig = sig;
+    sub.innerHTML = n
+      ? a.todos.map(t => {
+          const c = ST_CLASS[t.status] || 'todo';
+          return `<div class="subtask ${c}"><span class="st-dot ${c}"></span><span class="st-txt">${esc(t.content)}</span></div>`;
+        }).join('')
+      : `<div class="subtask-empty">Pas de sous-taches detectees pour cette session.</div>`;
+  }
+
+  const open = a.id === openId;
+  el.classList.toggle('open', open);
+  sub.hidden = !open;
+}
 
 function renderAgents(agents) {
-  const list = $('agentsList');
-  const active = agents.filter(a => a.status === 'running').length;
   $('count').textContent = agents.length + ' session' + (agents.length > 1 ? 's' : '');
   $('tabAgentsN').textContent = agents.length;
   $('agentsEmpty').hidden = agents.length > 0;
 
-  list.innerHTML = agents.map(a => `
-    <div class="agent">
-      <div class="mono-badge">${robotIcon(a.project)}</div>
-      <div class="a-main">
-        <div class="a-name">${esc(a.project)}</div>
-        <div class="a-task">${esc(a.last || '…')}</div>
-        <div class="a-meta"><span class="phase">${a.turns} messages</span></div>
-      </div>
-      <div class="a-side">
-        <span class="status ${STATUS_CLASS[a.status]}"><span class="dot"></span>${STATUS_LABEL[a.status]}</span>
-        <span class="time">${relTime(a.ageMs)}</span>
-      </div>
-    </div>`).join('');
+  const list = $('agentsList');
+  const seen = new Set();
+  agents.forEach((a, i) => {
+    seen.add(a.id);
+    let el = cardCache.get(a.id);
+    if (!el) { el = createCard(a); cardCache.set(a.id, el); }
+    updateCard(el, a);
+    if (list.children[i] !== el) list.insertBefore(el, list.children[i] || null);
+  });
+  for (const [id, el] of cardCache) {
+    if (!seen.has(id)) { el.remove(); cardCache.delete(id); if (openId === id) openId = null; }
+  }
+  fitWindow();
 }
+
+// Barre de defilement : visible seulement pendant le scroll, puis disparait.
+document.querySelectorAll('.body').forEach(b => {
+  let timer;
+  b.addEventListener('scroll', () => {
+    b.classList.add('is-scrolling');
+    clearTimeout(timer);
+    timer = setTimeout(() => b.classList.remove('is-scrolling'), 900);
+  });
+});
 
 async function refreshAgents() {
   const res = await window.api.listSessions();
@@ -204,6 +323,8 @@ function renderGit(data) {
     </div>`).join('');
   $('branchItems').querySelectorAll('.bitem').forEach(i =>
     i.addEventListener('click', () => doCheckout(i.dataset.branch)));
+
+  fitWindow();
 }
 
 async function doCheckout(branch) {

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   minimize:  () => ipcRenderer.invoke('win:minimize'),
   close:     () => ipcRenderer.invoke('win:close'),
   togglePin: () => ipcRenderer.invoke('win:toggle-pin'),
+  autosize:  (h) => ipcRenderer.invoke('win:autosize', h),
 
   // sessions Claude
   listSessions: () => ipcRenderer.invoke('sessions:list'),
