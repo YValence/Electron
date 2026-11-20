@@ -2,7 +2,7 @@
 const $ = (id) => document.getElementById(id);
 
 /* ============ Icônes robot (style ligne) ============ */
-const RB = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="robot">${inner}</svg>`;
+const RB = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="robot">${inner}</svg>`;
 const D = (x, y, r = 1.1) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor" stroke="none"/>`;
 const ROBOTS = [
   // 1 — tête carree, antenne, oreilles
@@ -18,14 +18,13 @@ const ROBOTS = [
   // 6 — sourire, bras latéraux
   RB(`<rect x="6" y="5" width="12" height="11" rx="3"/><path d="M6 8.5 H3"/><path d="M18 8.5 H21"/>${D(10,10,1)}${D(14,10,1)}<path d="M9.6 12.4 Q12 14.3 14.4 12.4"/><path d="M7 16 Q12 19 17 16"/>`)
 ];
-const ROBOT_COLORS = ['#5b9bff', '#a78bfa', '#f5b544', '#3ecf8e', '#ff6b9d', '#22d3ee'];
 function hashOf(seed) {
   let h = 0; const s = String(seed);
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return h;
 }
+// chaque projet garde une silhouette de robot stable (la couleur, elle, reste monochrome : voir le CSS)
 function robotIcon(seed) { return ROBOTS[hashOf(seed) % ROBOTS.length]; }
-function robotColor(seed) { return ROBOT_COLORS[hashOf(seed) % ROBOT_COLORS.length]; }
 
 /* ============ Controles fenetre ============ */
 $('minBtn').addEventListener('click', () => window.api.minimize());
@@ -35,34 +34,6 @@ $('pinBtn').addEventListener('click', async () => {
   $('pinBtn').classList.toggle('active', pinned);
 });
 $('pinBtn').classList.add('active'); // epingle par defaut
-
-/* ============ Mode tiroir ============ */
-// La fenetre se replie sur le bord droit ; seule la languette depasse.
-// C'est le processus principal qui decide d'ouvrir/fermer (il suit la vraie
-// position du curseur) : ici on se contente d'animer en CSS selon son signal.
-let drawerMode = false;
-
-// On se souvient du choix (tiroir ou fenetre classique) d'une fois sur l'autre.
-function loadDrawerPref() { try { return localStorage.getItem('cockpit.drawer') === '1'; } catch { return false; } }
-function saveDrawerPref(v) { try { localStorage.setItem('cockpit.drawer', v ? '1' : '0'); } catch {} }
-
-async function setDrawerMode(on) {
-  drawerMode = on;
-  saveDrawerPref(on);
-  document.body.classList.toggle('drawer', on);
-  $('drawerBtn').classList.toggle('active', on);
-  if (!on) document.body.classList.remove('drawer-open');   // retour fenetre normale
-  await window.api.setDrawerMode(on);
-  fitWindow();
-}
-
-// Le main nous dit quand ouvrir (true) ou fermer (false) : on glisse en CSS.
-window.api.onDrawerState((open) => {
-  document.body.classList.toggle('drawer-open', !!open);
-});
-
-$('drawerBtn').addEventListener('click', () => setDrawerMode(!drawerMode));
-if (loadDrawerPref()) setDrawerMode(true);   // restaure le choix precedent
 
 /* ============ Onglets ============ */
 const panels = { agents: $('tab-agents'), git: $('tab-git') };
@@ -86,7 +57,7 @@ const STATUS_CLASS = { running: 'run', done: 'done', idle: 'idle',
   ask: 'ask', perm: 'perm', plan: 'plan' };
 const ST_CLASS = { completed: 'done', in_progress: 'doing', pending: 'todo' };
 
-const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>';
+const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg>';
 
 const cardCache = new Map();   // id -> element (rendu incremental, pas de rebuild complet)
 let openId = null;             // accordeon : un seul agent ouvert a la fois
@@ -158,10 +129,9 @@ function createCard(a) {
 
 function updateCard(el, a) {
   el.dataset.cwd = a.cwd || '';
-  el.classList.toggle('working', a.status === 'running');  // contour jaune + robot anime
+  el.classList.toggle('working', a.status === 'running');  // robot net quand il travaille
   el.classList.remove('wait-ask', 'wait-perm', 'wait-plan');
-  if (a.waiting) el.classList.add('wait-' + a.waiting.kind);  // accent selon l'attente
-  el.querySelector('.mono-badge').style.color = robotColor(a.project);
+  if (a.waiting) el.classList.add('wait-' + a.waiting.kind);  // liseré selon l'attente
   el.querySelector('.a-name').textContent = a.project;
   el.querySelector('.a-task').textContent = a.last || '…';
   el.querySelector('.phase').textContent = a.turns + ' messages';
@@ -293,6 +263,7 @@ setInterval(refreshAgents, 3000); // live : toutes les 3 s
 let currentRepo = null;
 let repos = [];            // depots detectes { repo, name, current }
 let reposSig = '';         // signature des dossiers scannes (evite un re-scan inutile)
+let gitCommits = [];       // commits du depot courant (pour afficher le detail au clic)
 
 // Memorisation (par navigateur) : depots ajoutes a la main + dernier depot choisi.
 function loadManual() { try { return JSON.parse(localStorage.getItem('cockpit.manualRepos') || '[]'); } catch { return []; } }
@@ -346,6 +317,7 @@ function showGitEmpty() {
   $('gitEmpty').hidden = false;
   $('gitWrap').hidden = true;
   $('branchSwitch').hidden = true;
+  $('commitDetails').hidden = true;
   fitWindow();
 }
 
@@ -356,7 +328,8 @@ async function loadGit() {
   renderGit(res);
 }
 
-const LANE_COLORS = ['var(--fg)', '#5b9bff', '#a78bfa', '#f5b544', '#3ecf8e', '#ff6b9d', '#22d3ee'];
+// la branche courante (lane 0) porte l'accent ; les autres lanes restent en gris neutres
+const LANE_COLORS = ['var(--accent)', 'var(--fg-2)', 'var(--fg-3)', 'var(--fg-4)', 'var(--fg-3)', 'var(--fg-2)', 'var(--fg-4)'];
 const ROW_H = 40, COL_W = 18, X0 = 14, Y0 = 20, R = 5;
 
 // Attribue une colonne (lane) a chaque commit — algorithme "railway".
@@ -442,10 +415,14 @@ function renderGit(data) {
   $('gitWrap').hidden = false;
   $('branchSwitch').hidden = false;
 
-  // commits
+  // on change de depot : on repart sans commit selectionne
+  gitCommits = data.commits;
+  $('commitDetails').hidden = true;
+
+  // commits (data-hash : sert a retrouver le commit clique pour afficher ses details)
   const rows = $('gitRows');
   rows.innerHTML = data.commits.map(c => `
-    <div class="commit-row" style="height:${ROW_H}px">
+    <div class="commit-row" data-hash="${esc(c.hash)}" style="height:${ROW_H}px">
       <div class="commit-msg"><span class="subj">${esc(c.subject)}</span>${refChips(c.refs)}</div>
       <div class="commit-sub"><span class="sha">${esc(c.hash.slice(0,7))}</span><span>${esc(c.an)}</span><span>${esc(c.ar)}</span></div>
     </div>`).join('');
@@ -455,9 +432,8 @@ function renderGit(data) {
   renderGraph(data.commits, colOf, maxCols);
 
   // selecteur de branche
-  const curColor = LANE_COLORS[1];
   $('curBranch').textContent = data.current || '(detached)';
-  $('curDot').style.background = curColor;
+  $('curDot').style.background = 'var(--accent)';
   $('branchItems').innerHTML = data.branches.map(b => `
     <div class="bitem" data-branch="${esc(b)}" ${b === data.current ? 'aria-current="true"' : ''}>
       <span class="ln"></span><span class="nm">${esc(b)}</span><span class="ck">&#10003;</span>
@@ -467,6 +443,47 @@ function renderGit(data) {
 
   fitWindow();
 }
+
+// Date ISO -> format lisible en francais (ex. "18 nov. 2026, 21:30").
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+// Affiche les details d'un commit dans le panneau et surligne sa ligne.
+function showCommit(c, rowEl) {
+  document.querySelectorAll('.commit-row.sel').forEach(r => r.classList.remove('sel'));
+  if (rowEl) rowEl.classList.add('sel');
+
+  const parents = c.parents.length ? c.parents.map(p => p.slice(0, 7)).join(', ') : '—';
+  const refs = c.refs.length ? refChips(c.refs) : '—';
+  const box = $('commitDetails');
+  box.hidden = false;
+  box.innerHTML =
+    `<div class="cd-msg">${esc(c.subject)}</div>` +
+    `<div class="rd-row"><span class="rd-k">SHA</span><span class="rd-v mono" data-tip="${esc(c.hash)}">${esc(c.hash)}</span></div>` +
+    `<div class="rd-row"><span class="rd-k">Auteur</span><span class="rd-v">${esc(c.an)}${c.ae ? ' &lt;' + esc(c.ae) + '&gt;' : ''}</span></div>` +
+    `<div class="rd-row"><span class="rd-k">Date</span><span class="rd-v">${esc(fmtDate(c.iso))} · ${esc(c.ar)}</span></div>` +
+    `<div class="rd-row"><span class="rd-k">Parents</span><span class="rd-v mono">${esc(parents)}</span></div>` +
+    `<div class="rd-row"><span class="rd-k">Refs</span><span class="rd-v">${refs}</span></div>` +
+    `<div class="cd-actions"><button class="wbtn copy-sha">Copier le SHA</button></div>`;
+  const cb = box.querySelector('.copy-sha');
+  cb.addEventListener('click', () => {
+    window.api.copy(c.hash);
+    cb.textContent = 'Copié';
+    setTimeout(() => { cb.textContent = 'Copier le SHA'; }, 1200);
+  });
+  fitWindow();
+}
+
+// Clic sur une ligne de commit -> ouvre ses details (delegation : pose une seule fois).
+$('gitRows').addEventListener('click', (e) => {
+  const row = e.target.closest('.commit-row');
+  if (!row) return;
+  const c = gitCommits.find(x => x.hash === row.dataset.hash);
+  if (c) showCommit(c, row);
+});
 
 async function doCheckout(branch) {
   openMenu(false);

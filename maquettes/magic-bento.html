@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cockpit — maquette Magic Bento</title>
+<style>
+  /* =========================================================================
+     MAQUETTE — inspiration "Magic Bento" (version simple du debut).
+     Animation : halo violet + spotlight + onde, sur la carte survolee.
+     Traits de progression : fins et SANS couleur (monochrome).
+     CSS/JS pur, zero librairie. Couleurs = les tiennes (--merge = violet).
+     ========================================================================= */
+  :root {
+    --bg:        #09090b;
+    --surface:   #0e0e11;
+    --surface-2: #141418;
+    --surface-3: #1b1b20;
+    --line:      #242429;
+    --line-2:    #2f2f36;
+    --fg:        #f4f4f5;
+    --fg-2:      #a1a1aa;
+    --fg-3:      #71717a;
+    --fg-4:      #52525b;
+    --run:   #5b9bff;
+    --ask:   #f5b544;
+    --done:  #3ecf8e;
+    --merge: #a78bfa;
+    --glow:  167, 139, 250;
+    --radius: 16px;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Code", "JetBrains Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--sans); color: var(--fg);
+    background:
+      radial-gradient(900px 500px at 50% -10%, rgba(var(--glow), .10), transparent 60%),
+      var(--bg);
+    padding: 40px 18px; display: flex; justify-content: center; align-items: flex-start;
+  }
+
+  .window {
+    width: 460px; background: var(--surface);
+    border: 1px solid var(--line-2); border-radius: var(--radius);
+    overflow: hidden; box-shadow: 0 30px 80px -30px #000;
+  }
+  .titlebar { display: flex; align-items: center; gap: 11px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; font-size: 15px; }
+  .count { font-family: var(--mono); font-size: 11px; color: var(--fg-2);
+    border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 7px; }
+  .spacer { flex: 1; }
+  .ic { width: 26px; height: 26px; display: grid; place-items: center; color: var(--fg-3);
+    border-radius: 8px; font-size: 12px; border: 1px solid transparent; }
+  .tabs { display: flex; gap: 4px; padding: 10px 12px; }
+  .tab { color: var(--fg-3); font-weight: 600; font-size: 13px; padding: 7px 13px;
+    border-radius: 9px; border: 1px solid transparent; display: flex; gap: 8px; }
+  .tab.on { color: var(--fg); background: var(--surface-3); border-color: var(--line-2); }
+  .tab .n { font-family: var(--mono); font-size: 11px; color: var(--fg-2); }
+
+  /* =========================================================================
+     Grille de cartes
+     ========================================================================= */
+  .grid { padding: 8px 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* --mx / --my : position du curseur DANS la carte (posee au mousemove). */
+  .tile {
+    position: relative; border-radius: 14px; padding: 15px;
+    background: var(--surface-2); border: 1px solid var(--line);
+    overflow: hidden;
+    transition: transform .25s cubic-bezier(.2,.7,.3,1), border-color .25s;
+    --mx: 50%; --my: 50%;
+  }
+  .tile:hover { transform: translateY(-2px); }
+
+  /* (1) HALO DE BORDURE qui suit le curseur (carte survolee). */
+  .tile::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+    background: radial-gradient(180px circle at var(--mx) var(--my),
+                rgba(var(--glow), .9), rgba(var(--glow), 0) 45%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  /* (2) SPOTLIGHT interne doux. */
+  .tile::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(260px circle at var(--mx) var(--my),
+                rgba(var(--glow), .12), transparent 55%);
+    opacity: 0; transition: opacity .25s;
+  }
+  .tile:hover::before, .tile:hover::after { opacity: 1; }
+  .tile > * { position: relative; z-index: 1; }
+
+  .row { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: start; }
+  .badge { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+    border: 1px solid var(--line-2); background: var(--surface-3); font-size: 18px; }
+  .name { font-weight: 600; font-size: 14.5px; }
+  .task { font-size: 12.5px; color: var(--fg-3); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--fg-2);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .status .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.run  { color: var(--run);  border-color: color-mix(in srgb, var(--run) 35%, var(--line-2)); }
+  .status.ask  { color: var(--ask);  border-color: color-mix(in srgb, var(--ask) 40%, var(--line-2)); }
+  .status.done { color: var(--done); border-color: color-mix(in srgb, var(--done) 30%, var(--line-2)); }
+
+  /* -------------------------------------------------------------------------
+     Traits de progression : FINS et SANS couleur (monochrome).
+     - vides  : gris tres sombre
+     - remplis: gris clair neutre (aucune teinte)
+     ------------------------------------------------------------------------- */
+  .progress { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+  .segs { flex: 1; display: flex; gap: 3px; }
+  .segs i { flex: 1; height: 3px; border-radius: 2px; background: var(--surface-3); }
+  .segs i.on { background: var(--fg-3); }           /* en cours : gris neutre */
+  .segs.full i.on { background: var(--fg-2); }       /* termine : gris un peu plus clair */
+  .pfrac { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+
+  .tile.working .badge { box-shadow: 0 0 14px -4px var(--merge);
+    border-color: color-mix(in srgb, var(--merge) 50%, var(--line-2)); }
+
+  /* onde au clic (carte survolee) */
+  .ripple { position: absolute; border-radius: 50%; transform: translate(-50%, -50%) scale(0);
+    background: radial-gradient(circle, rgba(var(--glow), .5), transparent 70%);
+    pointer-events: none; z-index: 0; animation: rip .6s ease-out forwards; }
+  @keyframes rip { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+
+  .hint { text-align: center; color: var(--fg-4); font-size: 11px; padding: 6px 0 2px; }
+  .hint b { color: var(--merge); }
+</style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <span class="brand">Cockpit</span>
+      <span class="count">3 agents</span>
+      <span class="spacer"></span>
+      <span class="ic">&#9635;</span><span class="ic">&#8211;</span><span class="ic">&#10005;</span>
+    </div>
+    <div class="tabs">
+      <div class="tab on">Agents <span class="n">3</span></div>
+      <div class="tab">Git <span class="n">—</span></div>
+    </div>
+
+    <div class="grid" id="grid">
+      <div class="tile working">
+        <div class="row">
+          <div class="badge">&#129302;</div>
+          <div>
+            <div class="name">Cockpit</div>
+            <div class="task">Refonte du design des cartes d'agents…</div>
+          </div>
+          <div class="status run"><span class="dot"></span>En cours</div>
+        </div>
+        <div class="progress">
+          <div class="segs"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <span class="pfrac">3/5</span>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="row">
+          <div class="badge">&#129302;</div>
+          <div>
+            <div class="name">api-server</div>
+            <div class="task">Attend une permission : écrire dans config.js</div>
+          </div>
+          <div class="status ask"><span class="dot"></span>Permission</div>
+        </div>
+        <div class="progress">
+          <div class="segs"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <span class="pfrac">2/4</span>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="row">
+          <div class="badge">&#129302;</div>
+          <div>
+            <div class="name">site-vitrine</div>
+            <div class="task">Build terminé, tests au vert.</div>
+          </div>
+          <div class="status done"><span class="dot"></span>Terminé</div>
+        </div>
+        <div class="progress">
+          <div class="segs full"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          <span class="pfrac">3/3</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">Passe la souris sur une carte &rarr; <b>halo violet</b> qui suit le curseur · clique &rarr; onde</div>
+  </div>
+
+<script>
+  // ---- Les effets "Magic Bento" (version simple), en JS pur -----------------
+  const tiles = document.querySelectorAll('.tile');
+
+  tiles.forEach(tile => {
+    // halo + spotlight : on met a jour --mx / --my (position souris dans la carte)
+    tile.addEventListener('mousemove', e => {
+      const r = tile.getBoundingClientRect();
+      tile.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      tile.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+
+    // onde au clic
+    tile.addEventListener('click', e => {
+      const r = tile.getBoundingClientRect();
+      const span = document.createElement('span');
+      span.className = 'ripple';
+      const size = Math.max(r.width, r.height) * 2;
+      span.style.width = span.style.height = size + 'px';
+      span.style.left = (e.clientX - r.left) + 'px';
+      span.style.top = (e.clientY - r.top) + 'px';
+      tile.appendChild(span);
+      setTimeout(() => span.remove(), 600);
+    });
+  });
+</script>
+</body>
+</html>
